@@ -71,3 +71,14 @@ CASE
     ELSE 0
 END AS Min_Payment_Flag
 FROM risk_analysis_dataset;
+
+-- CREDIT MIX QUALITY
+
+SELECT *,
+CASE
+    WHEN Credit_Mix = 'Good' THEN 2
+    WHEN Credit_Mix = 'Standard' THEN 1
+    ELSE 0
+END AS Credit_Mix_Score
+
+FROM risk_analysis_dataset;

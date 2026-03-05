@@ -1,4 +1,4 @@
--- 1: DEBT TO INCOME RATIO
+-- 1: DEBT TO INCOME RATIO - 1
 
 SELECT *,
 (Outstanding_Debt / (Annual_Income + 1)) AS Debt_to_Income
@@ -6,14 +6,14 @@ SELECT *,
 FROM risk_analysis_dataset;
 
 
--- 2: EMI TO INCOME RATIO
+-- 2: EMI TO INCOME RATIO -2
 
 SELECT *,
 (Total_EMI_per_month / (Monthly_Inhand_Salary + 1)) AS EMI_to_Income
 
 FROM risk_analysis_dataset;
 
--- 3: CREDIT UTILIZATION PRESSURE
+-- 3: CREDIT UTILIZATION PRESSURE -3
 
 SELECT *,
 (Credit_Utilization_Ratio * Num_Credit_Card) AS Utilization_Risk

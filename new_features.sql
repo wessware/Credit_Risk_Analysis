@@ -20,7 +20,7 @@ SELECT *,
 
 FROM risk_analysis_dataset;
 
--- 4: DELINQUENCY RATE
+-- 4: DELINQUENCY RATE -4
 
 SELECT *,
 (Num_of_Delayed_Payment / (Num_of_Loan + 1)) AS Delinquency_Rate
@@ -28,14 +28,14 @@ SELECT *,
 FROM risk_analysis_dataset;
 
 
--- 5: INUQUIRY INTESITY
+-- 5: INUQUIRY INTESITY --5
 
 SELECT *,
 (Num_Credit_Inquiries / (Num_Credit_Card + 1)) AS Inquiry_Rate
 
 FROM risk_analysis_dataset;
 
--- 6: SAVINGS RATIO
+-- 6: SAVINGS RATIO --6
 
 SELECT *,
 (Monthly_Balance / (Monthly_Inhand_Salary + 1)) AS Savings_Ratio

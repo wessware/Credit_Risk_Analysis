@@ -71,3 +71,26 @@ FROM risk_analysis_dataset
 
 GROUP BY Payment_Behaviour
 ORDER BY Frequency DESC;
+
+-- FEATURE NORMALIZATION
+
+SELECT *,
+    /*DTI NORMALIZATION*/
+    GREATEST(0, LEAST(Outstanding_Debt / (Annual_Income+1), 1)) AS normalized_dti,
+
+    /*EMI PRESSURE NORMALIZATION*/
+    GREATEST(0, LEAST(Total_EMI_per_month / (Monthly_Inhand_Salary+1), 1)) AS normalized_emi,
+
+    /*DELINQUENCY NORMALIZATION*/
+    GREATEST(0, LEAST(Num_of_Delayed_Payment / (Num_of_Loan+1), 1)) AS normalized_delinquency,
+
+    /*CREDIT HISTORY NORMALIZATION*/
+    GREATEST(0, (LEAST(Credit_History_Age/120, 1))) AS normalized_credit_history,
+
+    /*SAVINGS NORMALIZATION*/
+    GREATEST(0, LEAST(Monthly_Balance / (Monthly_Inhand_Salary+1), 1)) AS normalized_savings,
+
+    /*UTILIZATION NORMALIZATION*/
+    GREATEST(0, LEAST(Credit_Utilization_Ratio, 1)) AS normalized_utilization
+
+FROM risk_analysis_dataset;

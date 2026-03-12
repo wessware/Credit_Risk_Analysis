@@ -37,4 +37,15 @@ data =  pd.DataFrame({
     "Monthly_Balance": np.random.normal(20000, 10000, n)
 })
 
-print(data.head(5))
+risk_score = (
+    0.35*(data["Outstanding_Debt"]/ data["Annual_Income"]) + 
+    0.25*(data["Total_EMI_per_month"] / data["Monthly_Inhand_Salary"]) + 
+    0.25*(data["Num_of_Delayed_Payment"] / 5) +
+    0.15*(data["Credit_Utilization_Ratio"])
+)
+
+proba_default = 1/(1+np.exp(-risk_score))
+
+data["Default_Flag"] = np.random.binomial(1, proba_default)
+
+data.to_csv("snythetic_risk_analysis_dataset.csv", index=False)

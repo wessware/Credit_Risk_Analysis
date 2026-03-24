@@ -11,6 +11,7 @@ from sklearn.model_selection import train_test_split, StratifiedKFold
 from sklearn.metrics import roc_auc_score
 from sklearn.base import clone
 from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
 
 from xgboost import XGBClassifier
 from lightgbm import LGBMClassifier
@@ -146,6 +147,20 @@ class KingaMetricCreditRiskModel:
             scores = cross_val_score(model, X, y, cv=cv, scoring='roc_auc')
             return scores.mean()
 
+        def rf_objective(trial):
+            params = {
+                'n_estimators': trial.suggest_int('n_estimators', 200, 1000),
+                'max_depth': trial.suggest_int('max_depth', 4, 12),
+                'min_samples_split': trial.suggest_int('min_samples_split', 2, 20),
+                'min_samples_leaf': trial.suggest_int('min_samples_leaf', 1, 10),
+                'max_features': trial.suggest_categorical('max_features', ['sqrt', 'log2', None]),
+                'class_weight': trial.suggest_categorical('class_weight', [None, 'balanced'])
+            }
+            model = RandomForestClassifier(**params, random_state=42, n_jobs=-1)
+            cv = TimeSeriesSplit(n_splits=5)
+            scores = cross_val_score(model, X, y, cv=cv, scoring='roc_auc')
+            return scores.mean()
+
         def cat_objective(trial):
             params = {
                 'iterations': trial.suggest_int('iterations', 200, 1000),
@@ -158,6 +173,11 @@ class KingaMetricCreditRiskModel:
             cv = TimeSeriesSplit(n_splits=5)
             scores = cross_val_score(model, X, y, cv=cv, scoring='roc_auc')
             return scores.mean()
+
+        print("Tuning RF...")
+        rf_study = optuna.create_study(direction='maximize')
+        rf_study.optimize(rf_objective, n_trials=50)
+        self.best_params['rf'] = rf_study.best_params
 
         print("Tuning XGB...")
         xgb_study = optuna.create_study(direction='maximize')
@@ -181,9 +201,12 @@ class KingaMetricCreditRiskModel:
 
         scale = (y == 0).sum() / (y == 1).sum()
 
+        scale = (y == 0).sum() / (y == 1).sum()
+
         self.base_models = {
-            "xgb": XGBClassifier(**self.best_params['xgb'], tree_method="hist", random_state=42),
-            "lgbm": LGBMClassifier(**self.best_params['lgbm'], force_col_wise=True, random_state=42, verbose=-1),
+            "rf": RandomForestClassifier(**self.best_params['rf'], random_state=42, n_jobs=-1),
+            "xgb": XGBClassifier(**self.best_params['xgb'], tree_method="hist", random_state=42, scale_pos_weight=scale),
+            "lgbm": LGBMClassifier(**self.best_params['lgbm'], force_col_wise=True, random_state=42, verbose=-1, class_weight='balanced'),
             "cat": CatBoostClassifier(**self.best_params['cat'], verbose=0, random_state=42, auto_class_weights="Balanced")
         }
 

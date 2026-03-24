@@ -11,6 +11,7 @@
             "port": 3306,
             "driver": "MySQL",
             "name": "VS CODE LOAN",
+            
             "database": "loan_1",
             "username": "root"
         }

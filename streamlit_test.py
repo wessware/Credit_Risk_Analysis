@@ -1,5 +1,4 @@
 import streamlit as st
-import pandas as pd
 import mysql.connector
 
 # -------------------------
@@ -26,10 +25,10 @@ def get_connection():
             return mysql.connector.connect(**st.secrets)
         
         # Fallback to sidebar inputs
-        host = st.sidebar.text_input("MySQL Host", value="localhost", type="password")
+        host = st.sidebar.text_input("MySQL Host", value="localhost", type="default")
         user = st.sidebar.text_input("MySQL User", value="root")
-        password = st.sidebar.text_input("MySQL Password", value="", type="password")
-        database = st.sidebar.text_input("Database", value="credit_db")
+        password = st.sidebar.text_input("MySQL Password", value="WECHALE$0398_wess", type="password")
+        database = st.sidebar.text_input("Database", value="kingametrics")
         
         if st.sidebar.button("Test Connection"):
             test_conn = mysql.connector.connect(host=host, user=user, password=password, database=database)

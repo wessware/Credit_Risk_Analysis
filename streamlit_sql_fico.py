@@ -10,13 +10,13 @@ st.set_page_config(
     layout="centered"
 )
 
-st.title("FICO-Style Credit Risk Engine - FIXED")
+st.title("FICO Credit Risk Engine")
 st.caption("SQL-Based Composite Credit Scoring")
 
 st.divider()
 
 # -------------------------
-# DB CONFIG - TOP LEVEL (Widgets always run)
+# DB CONFIG - TOP LEVEL
 # -------------------------
 if 'db_creds' not in st.session_state:
     st.session_state.db_creds = None
@@ -31,17 +31,17 @@ if st.secrets and 'host' in st.secrets:
             test_conn.close()
             st.session_state.db_creds = st.secrets
             st.session_state.db_hash = hashlib.md5(creds_str.encode()).hexdigest()
-            st.success("✅ Secrets validated")
+            st.success("Secrets validated")
         except Exception as e:
             st.error(f"Secrets invalid: {e}")
             st.stop()
 
 # Sidebar (always executes)
 with st.sidebar:
-    st.header("🛠️ Database Setup")
+    st.header("Connect to Database")
     host = st.text_input("Host:", value="localhost")
     user = st.text_input("User:", value="root")
-    password = st.text_input("Password:", type="password", value="")
+    password = st.text_input("Password:", type="password", value="WECHALE$0398_wess")
     database = st.text_input("Database:", value="kingametrics")
     
     if st.button("Test Connection", key="sidebar_test"):
@@ -52,15 +52,15 @@ with st.sidebar:
                 test_conn.close()
                 st.session_state.db_creds = dict(host=host, user=user, password=password, database=database)
                 st.session_state.db_hash = hashlib.md5(creds_str.encode()).hexdigest()
-                st.success("✅ Connected & Cached!")
+                st.success("Connected to Kingametric Database")
             except Exception as e:
-                st.error(f"❌ Connection failed: {e}")
+                st.error(f"Connection failed: {e}")
 
 if not st.session_state.db_creds:
-    st.error("👆 Configure database in sidebar or secrets.toml")
+    st.error("To proceed please connect to the Kingametric Database")
     st.stop()
 
-@st.cache_resource(ttl=600)
+@st.cache_resource(ttl=6000)
 def get_connection(_hash):
     return mysql.connector.connect(**st.session_state.db_creds)
 
@@ -71,7 +71,15 @@ def run_scoring(input_data):
     conn = None
     try:
         conn = get_connection(st.session_state.db_hash)
-        cursor = conn.cursor(dictionary=True)
+        # Ping/reconnect logic
+        if not conn.is_connected():
+            conn.reconnect(attempts=2, delay=1)
+        
+        #cursor = conn.cursor()
+        #cursor.execute("SELECT 1")
+        #cursor.close()
+        conn.ping(reconnect=True)
+        cursor = conn.cursor(dictionary=True) 
 
         query = """
         SELECT *,
@@ -119,7 +127,7 @@ def run_scoring(input_data):
         st.error(f"Query error: {e}")
         return None
     finally:
-        if conn:
+        if conn and conn.is_connected():
             conn.close()
 
 # -------------------------
@@ -129,12 +137,12 @@ with st.form("credit_form"):
     col1, col2 = st.columns(2)
     with col1:
         st.subheader("Income & Debt")
-        Annual_Income = st.number_input("Annual Income", min_value=0.0, value=50000.0)
-        Monthly_Inhand_Salary = st.number_input("Monthly Salary", min_value=0.0, value=4000.0)
-        Outstanding_Debt = st.number_input("Debt", min_value=0.0, value=10000.0)
+        Annual_Income = st.number_input("Annual Income", min_value=1.0, value=50000.0)
+        Monthly_Inhand_Salary = st.number_input("Monthly Salary", min_value=1.0, value=4000.0)
+        Outstanding_Debt = st.number_input("Debt", min_value=1.0, value=10000.0)
     with col2:
         st.subheader("Loans")
-        Total_EMI_per_month = st.number_input("EMI/Month", min_value=0.0, value=500.0)
+        Total_EMI_per_month = st.number_input("Monthly EMI", min_value=0.0, value=500.0)
         Num_of_Loan = st.number_input("Loans", min_value=1, max_value=50, value=2)
         Num_of_Delayed_Payment = st.number_input("Delays", min_value=0, value=1)
     
@@ -147,7 +155,7 @@ with st.form("credit_form"):
         st.subheader("Savings")
         Monthly_Balance = st.number_input("Balance", min_value=0.0, value=1000.0)
 
-    submitted = st.form_submit_button("🚀 Score Me!", use_container_width=True)
+    submitted = st.form_submit_button("Evaluate Risk Score", use_container_width=True)
 
 if submitted:
     input_data = dict(

@@ -314,5 +314,5 @@ class KingaMetricCreditRiskModel:
 
 if __name__ == '__main__':
     model = KingaMetricCreditRiskModel()
-    auc = model.train('datasets/skew_fixed_credit_risk.csv')
+    auc = model.train('datasets/kingametric_credit_risk.csv')
     model.save()

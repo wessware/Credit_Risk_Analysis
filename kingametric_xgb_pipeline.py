@@ -162,7 +162,6 @@ class KingaMetricXGB:
 
         print("Step 6: Predictions and evaluation...")
         test_proba = self.xgb_model.predict_proba(X_test_sel)[:, 1]
-        test_pred = (test_proba >= self.best_threshold).astype(int)
         self.optimize_threshold(y_test, test_proba)
         test_pred_opt = (test_proba >= self.best_threshold).astype(int)
         self.evaluate(y_test, test_proba, test_pred_opt)

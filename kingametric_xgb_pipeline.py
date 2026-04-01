@@ -59,8 +59,19 @@ class KingaMetricXGB:
         # Advanced
         df["Income_Delinq"] = df["Annual_Income"] * df.get("normalized_delinquency", 0)
         df["Loan_DTI"] = df["Num_of_Loan"] * df.get("normalized_dti", 0)
-        # Bins
-        df["Income_Q"] = pd.qcut(df["Annual_Income"], 4, labels=['Q1', 'Q2', 'Q3', 'Q4']).astype(str)
+        # Value-based Income_Q assignment (Solution 2 - robust for all cases)
+        def assign_income_quartile(income):
+            if pd.isna(income):
+                return 'Q2'
+            if income < 30000:
+                return 'Q1'
+            elif income < 60000:
+                return 'Q2'
+            elif income < 100000:
+                return 'Q3'
+            else:
+                return 'Q4'
+        df["Income_Q"] = df["Annual_Income"].apply(assign_income_quartile)
         # Poly features
         for feat in ['Credit_Utilization_Ratio', 'normalized_dti', 'normalized_delinquency']:
             if feat in df.columns:

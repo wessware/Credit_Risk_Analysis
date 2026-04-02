@@ -1,11 +1,9 @@
 import streamlit as st
 import pickle
 import pandas as pd
-import hashlib
 import joblib
 import numpy as np
 
-from kingametric_xgb_pipeline import KingaMetricXGB
 st.set_page_config(
     page_title="Kinga Ensemble Credit Score",
     layout="wide"

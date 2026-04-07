@@ -1,4 +1,4 @@
-from kingametric_xgb_pipeline import KingaMetricXGB
+from pipelines.kingametric_xgb_pipeline import KingaMetricXGB
 import joblib
 import pandas as pd
 

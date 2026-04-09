@@ -114,10 +114,10 @@ class KingaMetricXGB:
         if self.xgb_model is None:
             raise ValueError("Model not trained.")
         importances = pd.Series(self.xgb_model.feature_importances_, index=self.feature_names)
-        top20 = importances.nlargest(20)
+        top20 = importances.nlargest(50)
         plt.figure(figsize=(10, 8))
         top20.plot(kind='barh', color='skyblue')
-        plt.title('Top 20 XGB Feature Importances')
+        plt.title('Top 50 XGB Feature Importances')
         plt.xlabel('Importance')
         plt.gca().invert_yaxis()
         plt.tight_layout()

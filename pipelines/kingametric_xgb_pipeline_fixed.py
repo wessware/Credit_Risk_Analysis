@@ -3,14 +3,13 @@ import numpy as np
 import joblib
 import category_encoders as ce
 import matplotlib.pyplot as plt
-
-from sklearn.metrics import roc_auc_score, ConfusionMatrixDisplay
+from sklearn.metrics import roc_auc_score, ConfusionMatrixDisplay, roc_curve
 from sklearn.model_selection import train_test_split
 from sklearn.feature_selection import mutual_info_classif
-from sklearn.metrics import classification_report, roc_curve
-from sklearn.metrics import auc
+from sklearn.metrics import classification_report
 from xgboost import XGBClassifier
 import os
+from sklearn.metrics import auc
 
 class KingaMetricXGB:
     def __init__(self):
@@ -168,10 +167,10 @@ class KingaMetricXGB:
 
     def evaluate(self, y_true, y_proba, y_pred, save_path="visualizations/confusion_matrix.png"):
         """Evaluate with ROC_AUC and Confusion Matrix."""
-        roc_auc_score_val = roc_auc_score(y_true, y_proba)
+        auc_score = roc_auc_score(y_true, y_proba)
         c_score = classification_report(y_true, y_pred, target_names=['No Default', 'Default'])
 
-        print(f"Test ROC_AUC: {roc_auc_score_val:.4f}")
+        print(f"Test ROC_AUC: {auc_score:.4f}")
         print(f"Classification Report:\n{c_score}")
 
         disp = ConfusionMatrixDisplay.from_predictions(y_true, y_pred, display_labels=['No Default', 'Default'])
@@ -232,7 +231,7 @@ class KingaMetricXGB:
         proba = self.predict_proba(X)
         return (proba >= self.best_threshold).astype(int)
 
-    def save(self, path="pickled_models/kingametric_xgb_1.pkl"):
+    def save(self, path="pickled_models/kingametric_xgb.pkl"):
         """Save the full pipeline."""
         os.makedirs(os.path.dirname(path), exist_ok=True)
         joblib.dump(self, path)

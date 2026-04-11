@@ -239,6 +239,6 @@ class KingaMetricXGB:
 
 if __name__ == '__main__':
     model = KingaMetricXGB()
-    auc = model.train('datasets/kingametric_credit_risk.csv')
+    auc = model.train('../datasets/kingametric_credit_risk.csv')
     print(f"Final AUC: {auc:.4f}")
 

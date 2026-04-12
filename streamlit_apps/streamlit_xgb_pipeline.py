@@ -62,81 +62,60 @@ st.divider()
 def load_model():
     import sys
     sys.path.insert(0, 'c:/Users/Admin/Documents/PROJECTS/credit_score')
-    model_path = "pickled_models/kingametric_xgb_1.pkl"
+    model_path = "c:/Users/Admin/Documents/PROJECTS/credit_score/pickled_models/kingametric_xgb_1.pkl"
     model = joblib.load(model_path)
     st.success("KingaMetricXGB Pipeline loaded")
     return model
 
 model = load_model()
 
+# Extract model attributes for preprocessing alignment
+expected_features = getattr(model, 'feature_names', None)
+expected_dim = len(expected_features) if expected_features else 51
+st.info(f"Model loaded. Expected input dimension: {expected_dim}")
+
 def preprocess_input(input_data):
     df = pd.DataFrame([input_data])
     
-    # Compute normalized features (from SQL logic)
+    # Compute normalized features first (required by add_interaction_features)
     df['normalized_dti'] = np.clip(df['Outstanding_Debt'] / (df['Annual_Income'] + 1), 0, 1)
     df['normalized_utilization'] = np.clip(df['Credit_Utilization_Ratio'], 0, 1)
     df['normalized_emi'] = np.clip(df['Total_EMI_per_month'] / (df['Monthly_Inhand_Salary'] + 1), 0, 1)
     df['normalized_delinquency'] = np.clip(df['Num_of_Delayed_Payment'] / (df['Num_of_Loan'] + 1), 0, 1)
     df['normalized_savings'] = np.clip(df['Monthly_Balance'] / (df['Monthly_Inhand_Salary'] + 1), 0, 1)
     
-    # Call model interaction features
+    # Use model's exact preprocessing methods
     df = model.add_interaction_features(df)
     
-    # Value-based Income_Q assignment (Solution 2 - no pandas binning issues)
-    def assign_income_quartile(income):
-        if pd.isna(income):
-            return 'Q2'
-        if income < 30000:
-            return 'Q1'
-        elif income < 60000:
-            return 'Q2'
-        elif income < 100000:
-            return 'Q3'
-        else:
-            return 'Q4'
-    df["Income_Q"] = df["Annual_Income"].apply(assign_income_quartile)
+    # Target encode if encoder available (raw input for single row)
+    if hasattr(model, 'target_encoder') and model.target_encoder is not None:
+        try:
+            df = model.target_encode(df, fit=False)
+        except Exception as te_err:
+            st.warning(f"Target encoder transform failed: {te_err}, skipping")
     
-    # Manual additional interactions from top20 + missing from error
-    if 'normalized_delinquency' in df:
-        df['normalized_delinquency_sq'] = df['normalized_delinquency'] ** 2
-        df['normalized_delinquency_log'] = np.log1p(df['normalized_delinquency'])
-    if 'normalized_emi' in df:
-        df['normalized_emi_sq'] = df['normalized_emi'] ** 2
-    if 'normalized_savings' in df:
-        df['normalized_savings_sq'] = df['normalized_savings'] ** 2
-    if 'Num_of_Delayed_Payment' in df and 'Num_of_Loan' in df:
-        df['Payment_Instability'] = np.abs(df['Num_of_Delayed_Payment'] - df['Num_of_Loan'].median() if len(df) > 1 else 1)
-    df['Risk_Index'] = df.get('normalized_dti', 0.05) * df.get('normalized_delinquency', 0.1)
-    df['Obligation_Ratio'] = df.get('Total_EMI_per_month', 500) / df.get('Monthly_Inhand_Salary', 4000)
-    df['Repayment_Stress'] = df.get('Total_EMI_per_month', 500) / df.get('Monthly_Balance', 500)
-    df['Debt_Stress'] = df.get('Outstanding_Debt', 1000) / df.get('Annual_Income', 50000)
-    df['Income_Delinq'] = df.get('Annual_Income', 50000) / (df.get('Num_of_Delayed_Payment', 1) + 1)
-    df['Net_Cash_Flow'] = df.get('Monthly_Inhand_Salary', 4000) - df.get('Total_EMI_per_month', 500)
-    # Exact missing from model feature_names
-    df['credit_mix_quality'] = 0.5 if 'Credit_Mix' in df else 0.5
-    df['normalized_inquiry_intensity'] = df.get('Num_Credit_Inquiries', 1) / df.get('Credit_History_Age', 60)
-    df['Liquidity_Buffer'] = df.get('Monthly_Balance', 500) / df.get('Monthly_Inhand_Salary', 4000)
-    df['Credit_Depth'] = df.get('Num_Bank_Accounts', 4) + df.get('Num_Credit_Card', 2)
-    df['normalized_savings_capacity_ratio'] = df['normalized_savings'] * df.get('normalized_savings_sq', 0.04)
+    # Align to expected features exactly (model's predict uses self.feature_names)
+    if expected_features is not None:
+        df = df.reindex(columns=expected_features, fill_value=np.nan)
+        # Fill NaNs using TRAINING_MEDIANS where possible
+        for col in df.columns:
+            if col in TRAINING_MEDIANS:
+                df[col] = df[col].fillna(TRAINING_MEDIANS[col])
+            else:
+                df[col] = df[col].fillna(0.0)
+        df = df.iloc[:, :expected_dim]  # Ensure exact columns
+    else:
+        # Fallback: sort unique and fix to 51
+        cols_sorted = sorted(set(df.columns))
+        df = df[cols_sorted[:51]]
+        while len(df.columns) < 51:
+            df[f'pad_feature_{len(df.columns)}'] = 0.0
     
-    # Fill NaN/inf with training medians
     df.replace([np.inf, -np.inf], np.nan, inplace=True)
-    for col, median in TRAINING_MEDIANS.items():
-        if col in df.columns:
-            df[col] = df[col].fillna(median)
-        else:
-            # Add missing columns with median
-            df[col] = median
+    df.fillna(0, inplace=True)
     
-    # Trim to exactly 51 cols sorted
-    df = df[sorted(df.columns)][:51]
-    while len(df.columns) < 51:
-        col_name = f'pad_feature_{len(df.columns)}'
-        df[col_name] = TRAINING_MEDIANS.get(col_name, 0.0)
-    
-    # Debug info
-    st.info(f"Processed shape now {df.shape}, Columns sample: {list(df.columns)[:10]}...")
-    
+    # Debug
+    st.info(f"Processed shape: {df.shape} (target: {expected_dim if expected_features else 51}), cols sample: {list(df.columns)[:10]}...")
     return df
 
 FEATURES = [
@@ -240,10 +219,12 @@ if submitted:
     }
     
     try:
-        # Preprocess and predict
-        df_processed = preprocess_input(input_data)
-        proba = model.predict_proba(df_processed, already_encoded=False)[:, 1][0]
-        pred_class = model.predict(df_processed)[0]
+        df_input = pd.DataFrame([input_data])
+        # Use model's built-in predict methods directly (expects DataFrame)
+        proba = model.predict_proba(df_input)[:, 1][0]
+        pred_class = model.predict(df_input)[0]
+        df_processed = preprocess_input(input_data)  # For display/debug
+        st.write(f"Processed shape for display: {df_processed.shape}")
         
         # FICO-style score (higher proba[risky] → lower score)
         risk_prob = proba

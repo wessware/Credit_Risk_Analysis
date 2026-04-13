@@ -26,7 +26,7 @@ TRAINING_MEDIANS = {
     'normalized_utilization': 0.3,
     'normalized_emi': 0.2,
     'normalized_delinquency': 0.1,
-'normalized_savings': 0.2,
+    'normalized_savings': 0.2,
     'Total_Payment_Made': 1000.0,
     'Age': 35.0,
     'Credit_Default': 0.0,
@@ -71,7 +71,7 @@ model = load_model()
 
 # Extract model attributes for preprocessing alignment
 expected_features = getattr(model, 'feature_names', None)
-expected_dim = len(expected_features) if expected_features else 51
+expected_dim = len(expected_features) if expected_features else 30
 st.info(f"Model loaded. Expected input dimension: {expected_dim}")
 
 def preprocess_input(input_data):
@@ -96,26 +96,25 @@ def preprocess_input(input_data):
     
     # Align to expected features exactly (model's predict uses self.feature_names)
     if expected_features is not None:
-        df = df.reindex(columns=expected_features, fill_value=np.nan)
-        # Fill NaNs using TRAINING_MEDIANS where possible
-        for col in df.columns:
-            if col in TRAINING_MEDIANS:
-                df[col] = df[col].fillna(TRAINING_MEDIANS[col])
-            else:
-                df[col] = df[col].fillna(0.0)
-        df = df.iloc[:, :expected_dim]  # Ensure exact columns
+        # Ensure all expected features exist, fill missing with training medians
+        for col in expected_features:
+            if col not in df.columns:
+                df[col] = TRAINING_MEDIANS.get(col, 0.0)
+        
+        # Select ONLY the expected features in their training order
+        df = df[expected_features]
     else:
-        # Fallback: sort unique and fix to 51
+        # Fallback: sort unique and fix to 30
         cols_sorted = sorted(set(df.columns))
-        df = df[cols_sorted[:51]]
-        while len(df.columns) < 51:
+        df = df[cols_sorted[:30]]
+        while len(df.columns) < 30:
             df[f'pad_feature_{len(df.columns)}'] = 0.0
     
     df.replace([np.inf, -np.inf], np.nan, inplace=True)
     df.fillna(0, inplace=True)
     
     # Debug
-    st.info(f"Processed shape: {df.shape} (target: {expected_dim if expected_features else 51}), cols sample: {list(df.columns)[:10]}...")
+    st.info(f"Processed shape: {df.shape} (target: {expected_dim if expected_features else 30}), cols sample: {list(df.columns)[:10]}...")
     return df
 
 FEATURES = [

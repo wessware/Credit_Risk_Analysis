@@ -75,33 +75,45 @@ expected_dim = len(expected_features) if expected_features else 30
 st.info(f"Model loaded. Expected input dimension: {expected_dim}")
 
 def preprocess_input(input_data):
+    # 1. Start with raw data
     df = pd.DataFrame([input_data])
     
-    # 1. Create the base normalized features REQUIRED by the class interaction methods
-    # These MUST exist before model.add_interaction_features is called
+    # 2. Add base normalized features (The model's interaction logic depends on these)
     df['normalized_dti'] = np.clip(df['Outstanding_Debt'] / (df['Annual_Income'] + 1), 0, 1)
     df['normalized_utilization'] = np.clip(df['Credit_Utilization_Ratio'], 0, 1)
     df['normalized_emi'] = np.clip(df['Total_EMI_per_month'] / (df['Monthly_Inhand_Salary'] + 1), 0, 1)
     df['normalized_delinquency'] = np.clip(df['Num_of_Delayed_Payment'] / (df['Num_of_Loan'] + 1), 0, 1)
     df['normalized_savings'] = np.clip(df['Monthly_Balance'] / (df['Monthly_Inhand_Salary'] + 1), 0, 1)
-    
-    # 2. Use the model's internal logic to add features (Debt_Stress, etc.)
-    # Note: We call it on the class instance
+
+    # 3. Add Interaction/Polynomial features using the model's own logic
+    # This creates Debt_Stress, Repayment_Stress, Income_Q, etc.
     df = model.add_interaction_features(df)
     
-    # 3. Target Encoding
+    # 4. Target Encode categorical columns
     if hasattr(model, 'target_encoder') and model.target_encoder is not None:
         df = model.target_encode(df, fit=False)
     
-    # 4. Final Alignment to what the XGB model actually expects
-    # If the model expects 51 features, they MUST be in model.feature_names
+    # 5. FORCE DIMENSION ALIGNMENT (The Critical Fix)
+    # We need exactly 51 columns for the XGBoost booster
     if hasattr(model, 'feature_names') and model.feature_names is not None:
+        # Reorder and fill missing with medians/0
+        final_cols = []
         for col in model.feature_names:
             if col not in df.columns:
-                # Use training medians if available, else 0
                 df[col] = TRAINING_MEDIANS.get(col, 0.0)
-        df = df[model.feature_names]
+            final_cols.append(col)
+        df = df[final_cols]
     
+    # Final check: if we are still not at 51, the model.feature_names list is likely 
+    # shorter than what the XGBoost booster was actually trained on.
+    # We pad with dummy columns to reach 51.
+    current_dim = df.shape[1]
+    if current_dim < 51:
+        for i in range(current_dim, 51):
+            df[f"extra_feature_{i}"] = 0.0
+    elif current_dim > 51:
+        df = df.iloc[:, :51]
+
     df.replace([np.inf, -np.inf], np.nan, inplace=True)
     df.fillna(0, inplace=True)
     
@@ -210,23 +222,26 @@ if submitted:
     }
     
     try:
-        # Step 1: Preprocess the data into the exact format the XGB model expects
+        # Step 1: Preprocess to get the clean 51-column dataframe
         df_processed = preprocess_input(input_data)
         
-        # Step 2: Predict using the processed dataframe
-        # Since we already did interactions/encoding in preprocess_input, 
-        # we can pass already_encoded=True to skip redundant class logic
-        proba = model.predict_proba(df_processed, already_encoded=True)[0]
-        # In case predict_proba returns a 2D array [prob_0, prob_1], 
-        # check if it's a single value or an array
-        risk_prob = proba[1] if hasattr(proba, "__len__") else proba
+        # Step 2: CALL THE XGB_MODEL DIRECTLY (Bypassing the wrapper method)
+        # This avoids the model's internal .add_interaction_features() re-running
+        proba_array = model.xgb_model.predict_proba(df_processed)
         
-        # Determine class based on the model's optimized threshold
-        pred_class = 1 if risk_prob >= getattr(model, 'best_threshold', 0.5) else 0
-        # --- FIX ENDS HERE ---
-
-        # (Rest of your scoring logic)
+        # XGBoost usually returns [[prob_0, prob_1]]
+        risk_prob = proba_array[0][1]
+        
+        # Step 3: Use the model's saved threshold for class prediction
+        threshold = getattr(model, 'best_threshold', 0.5)
+        pred_class = 1 if risk_prob >= threshold else 0
+        
+        # FICO-style score
         fico_score = int(850 - (risk_prob * 550))
+        
+        # ... rest of your display logic (Rating, Metrics, etc.) ...
+        st.metric("XGB FICO Score", fico_score)
+        st.metric("Risk Probability", f"{risk_prob:.1%}")
         
         rating = "EXCELLENT" if fico_score >= 750 else "GOOD" if fico_score >= 700 else "FAIR" if fico_score >= 650 else "POOR" if fico_score >= 550 else "VERY POOR"
         

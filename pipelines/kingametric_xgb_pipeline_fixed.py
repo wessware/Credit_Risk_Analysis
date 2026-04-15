@@ -41,6 +41,7 @@ class KingaMetricXGB:
         df = self.add_interaction_features(df)
         df.replace([np.inf, -np.inf], np.nan, inplace=True)
         df.fillna(df.median(numeric_only=True), inplace=True)
+
         X = df.drop(columns=['Default_Flag'], axis=1)
         y = df['Default_Flag']
         return X, y
@@ -111,7 +112,7 @@ class KingaMetricXGB:
         self.xgb_model.fit(X, y)
         print(f"Trained XGB with scale_pos_weight: {scale_pos_weight:.2f}")
 
-    def plot_top_features(self, save_path="visualizations/xgb_top_features.png"):
+    def plot_top_features(self, save_path="visualizations/xgb_top_features_lean.png"):
         """Visualize top 20 features by importance."""
         if self.xgb_model is None:
             raise ValueError("Model not trained.")
@@ -143,7 +144,7 @@ class KingaMetricXGB:
         self.best_threshold = best_t
         print(f"Optimized threshold: {best_t:.3f} (KS: {best_ks:.3f})")
 
-    def plot_roc_curve(self, y_true, y_proba, save_path="visualizations/roc_curve.png"):
+    def plot_roc_curve(self, y_true, y_proba, save_path="visualizations/roc_curve_lean.png"):
         """Plot ROC curve."""
         fpr, tpr, _ = roc_curve(y_true, y_proba)
         roc_auc = auc(fpr, tpr)
@@ -165,7 +166,7 @@ class KingaMetricXGB:
 
         plt.show()
 
-    def evaluate(self, y_true, y_proba, y_pred, save_path="visualizations/confusion_matrix.png"):
+    def evaluate(self, y_true, y_proba, y_pred, save_path="visualizations/confusion_matrix_lean.png"):
         """Evaluate with ROC_AUC and Confusion Matrix."""
         auc_score = roc_auc_score(y_true, y_proba)
         c_score = classification_report(y_true, y_pred, target_names=['No Default', 'Default'])
@@ -231,7 +232,7 @@ class KingaMetricXGB:
         proba = self.predict_proba(X)
         return (proba >= self.best_threshold).astype(int)
 
-    def save(self, path="pickled_models/kingametric_xgb.pkl"):
+    def save(self, path="pickled_models/kingametric_xgb_lean.pkl"):
         """Save the full pipeline."""
         os.makedirs(os.path.dirname(path), exist_ok=True)
         joblib.dump(self, path)
@@ -239,6 +240,6 @@ class KingaMetricXGB:
 
 if __name__ == '__main__':
     model = KingaMetricXGB()
-    auc = model.train('../datasets/kingametric_credit_risk.csv')
+    auc = model.train('./datasets/kingametric_lean_dataset.csv') #kingametric_lean_dataset
     print(f"Final AUC: {auc:.4f}")
 

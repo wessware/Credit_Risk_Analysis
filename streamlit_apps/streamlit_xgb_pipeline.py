@@ -62,7 +62,7 @@ st.divider()
 def load_model():
     import sys
     sys.path.insert(0, 'c:/Users/Admin/Documents/PROJECTS/credit_score')
-    model_path = "c:/Users/Admin/Documents/PROJECTS/credit_score/pickled_models/kingametric_xgb_1.pkl"
+    model_path = "c:/Users/Admin/Documents/PROJECTS/credit_score/pickled_models/kingametric_xgb_lean_1.pkl"
     model = joblib.load(model_path)
     st.success("KingaMetricXGB Pipeline loaded")
     return model

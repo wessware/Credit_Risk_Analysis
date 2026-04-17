@@ -99,7 +99,7 @@ class KingaMetricXGB:
         """Select top 30 features using mutual information."""
         mi_scores = mutual_info_classif(X, y, random_state=42)
         mi_scores = pd.Series(mi_scores, index=X.columns).sort_values(ascending=False)
-        top_features = mi_scores.head(30).index
+        top_features = mi_scores.head(35).index
         self.feature_names = top_features.tolist()
         return X[top_features], top_features.tolist()
 
@@ -232,7 +232,7 @@ class KingaMetricXGB:
         proba = self.predict_proba(X)
         return (proba >= self.best_threshold).astype(int)
 
-    def save(self, path="pickled_models/kingametric_xgb_lean.pkl"):
+    def save(self, path="pickled_models/kingametric_xgb_lean_1.pkl"):
         """Save the full pipeline."""
         os.makedirs(os.path.dirname(path), exist_ok=True)
         joblib.dump(self, path)

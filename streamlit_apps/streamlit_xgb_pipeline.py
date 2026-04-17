@@ -1,8 +1,11 @@
 import streamlit as st
-import pickle
 import pandas as pd
 import joblib
 import numpy as np
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from pipelines.kingametric_xgb_pipeline_fixed import KingaMetricXGB
 
 # TRAINING_MEDIANS: Fixed medians mimicking training data for robust NaN filling
 TRAINING_MEDIANS = {
@@ -60,11 +63,9 @@ st.divider()
 # -------------------------
 @st.cache_resource
 def load_model():
-    import sys
-    sys.path.insert(0, 'c:/Users/Admin/Documents/PROJECTS/credit_score')
-    model_path = "c:/Users/Admin/Documents/PROJECTS/credit_score/pickled_models/kingametric_xgb_lean_1.pkl"
+    model_path = "pickled_models/kingametric_xgb_lean_1.pkl"
     model = joblib.load(model_path)
-    st.success("KingaMetricXGB Pipeline loaded")
+    st.success(f"✅ KingaMetricXGB Pipeline loaded. Features: {getattr(model, 'feature_names', 'N/A')}, dim: {len(getattr(model, 'feature_names', [])) if hasattr(model, 'feature_names') else 'N/A'}")
     return model
 
 model = load_model()
@@ -74,47 +75,20 @@ expected_features = getattr(model, 'feature_names', None)
 expected_dim = len(expected_features) if expected_features else 30
 st.info(f"Model loaded. Expected input dimension: {expected_dim}")
 
-def preprocess_input(input_data):
+def preprocess_for_display(input_data):
+    """Mimic pipeline for display only (model.predict handles full preprocessing internally)"""
     df = pd.DataFrame([input_data])
-    
-    # Compute normalized features first (required by add_interaction_features)
+    # Basic normalized features (matching pipeline)
     df['normalized_dti'] = np.clip(df['Outstanding_Debt'] / (df['Annual_Income'] + 1), 0, 1)
     df['normalized_utilization'] = np.clip(df['Credit_Utilization_Ratio'], 0, 1)
     df['normalized_emi'] = np.clip(df['Total_EMI_per_month'] / (df['Monthly_Inhand_Salary'] + 1), 0, 1)
     df['normalized_delinquency'] = np.clip(df['Num_of_Delayed_Payment'] / (df['Num_of_Loan'] + 1), 0, 1)
     df['normalized_savings'] = np.clip(df['Monthly_Balance'] / (df['Monthly_Inhand_Salary'] + 1), 0, 1)
-    
-    # Use model's exact preprocessing methods
+    df['normalized_credit_history'] = np.clip(df['Credit_History_Age'] / 840, 0, 1)
     df = model.add_interaction_features(df)
-    
-    # Target encode if encoder available (raw input for single row)
-    if hasattr(model, 'target_encoder') and model.target_encoder is not None:
-        try:
-            df = model.target_encode(df, fit=False)
-        except Exception as te_err:
-            st.warning(f"Target encoder transform failed: {te_err}, skipping")
-    
-    # Align to expected features exactly (model's predict uses self.feature_names)
-    if expected_features is not None:
-        # Ensure all expected features exist, fill missing with training medians
-        for col in expected_features:
-            if col not in df.columns:
-                df[col] = TRAINING_MEDIANS.get(col, 0.0)
-        
-        # Select ONLY the expected features in their training order
-        df = df[expected_features]
-    else:
-        # Fallback: sort unique and fix to 30
-        cols_sorted = sorted(set(df.columns))
-        df = df[cols_sorted[:30]]
-        while len(df.columns) < 30:
-            df[f'pad_feature_{len(df.columns)}'] = 0.0
-    
     df.replace([np.inf, -np.inf], np.nan, inplace=True)
     df.fillna(0, inplace=True)
-    
-    # Debug
-    st.info(f"Processed shape: {df.shape} (target: {expected_dim if expected_features else 30}), cols sample: {list(df.columns)[:10]}...")
+    st.info(f"Display preview shape: {df.shape}, sample cols: {list(df.columns)[:8]}...")
     return df
 
 FEATURES = [
@@ -160,7 +134,7 @@ with st.form("xgb_form"):
         Credit_Mix = st.selectbox("Credit Mix", ["Standard", "Good", "Poor"], index=0)
     with col_cat3:
         st.subheader("Borrower_Tier")
-        Borrower_Tier = st.selectbox("Borrower Tier", ["A", "B", "C", "D"], index=1)
+        Borrower_Tier = st.selectbox("Borrower Tier", ["Prime", "Near_Prime", "Subprime"], index=0)
     with col_cat4:
         st.subheader("Payment_Behaviour")
         Payment_Behaviour = st.selectbox("Payment Behaviour", ["RMPO", "low", "moderate", "high"], index=0)
@@ -170,10 +144,11 @@ with st.form("xgb_form"):
         st.subheader("Accounts")
         Num_Credit_Card = st.number_input("Credit Cards", min_value=0, value=2)
         Num_Bank_Accounts = st.number_input("Bank Accounts", min_value=0, value=3)
-    with col_extra2:
+    col_extra2:
         st.subheader("Rates & Dues")
         Interest_Rate = st.slider("Interest Rate", 0.0, 0.5, 0.12)
         Delayed_Dues = st.number_input("Delayed Dues", min_value=0.0, value=0.0)
+        Delay_from_due_date = st.number_input("Delay from due date", min_value=-100.0, value=-1.0)
     with col_extra3:
         st.subheader("Type of Loan")
         Type_of_Loan_options = ["Auto Loan", "Credit-Builder Loan", "Personal Loan", "Home Equity Loan", "Mortgage Loan", "Student Loan", "Debt Consolidation"]
@@ -181,9 +156,9 @@ with st.form("xgb_form"):
     with col_extra4:
         st.subheader("Additional")
         Total_Payment_Made = st.number_input("Total Payment Made", min_value=0.0, value=1000.0)
-        Age = st.slider("Age", 18, 80, 35)
-        Credit_Default = st.selectbox("Credit Default", ["No", "Yes"], index=0)
-        Num_Payment_Late = st.number_input("Num Payment Late", min_value=0, value=0)
+        # Age = st.slider("Age", 18, 80, 35)  # REMOVED: Extra
+        # Credit_Default = st.selectbox("Credit Default", ["No", "Yes"], index=0)  # REMOVED: Extra (target-like)
+        # Num_Payment_Late = st.number_input("Num Payment Late", min_value=0, value=0)  # REMOVED: Extra
     
     submitted = st.form_submit_button("Predict with XGB Pipeline", use_container_width=True)
 
@@ -192,38 +167,35 @@ if submitted:
     input_data = {
         "Annual_Income": Annual_Income,
         "Monthly_Inhand_Salary": Monthly_Inhand_Salary,
+        "Num_Bank_Accounts": Num_Bank_Accounts,
+        "Num_Credit_Card": Num_Credit_Card,
+        "Interest_Rate": Interest_Rate,
         "Num_of_Loan": Num_of_Loan,
-        "Total_EMI_per_month": Total_EMI_per_month,
+        "Type_of_Loan": "; ".join(Type_of_Loan) if Type_of_Loan else "Personal Loan",
+        "Delayed_Dues": Delayed_Dues,
         "Num_of_Delayed_Payment": Num_of_Delayed_Payment,
-        "Credit_Utilization_Ratio": Credit_Utilization_Ratio,
-        "Monthly_Balance": Monthly_Balance,
+        "Changed_Credit_Limit": Changed_Credit_Limit,
+        "Num_Credit_Inquiries": Num_Credit_Inquiries,
+        "Credit_Mix": Credit_Mix,
         "Outstanding_Debt": Outstanding_Debt,
         "Credit_History_Age": Credit_History_Age,
-        "Amount_invested_monthly": Amount_invested_monthly,
-        "Num_Credit_Inquiries": Num_Credit_Inquiries,
-        "Changed_Credit_Limit": Changed_Credit_Limit,
-        "Num_Credit_Card": Num_Credit_Card,
-        "Num_Bank_Accounts": Num_Bank_Accounts,
-        "Payment_of_Min_Amount": Payment_of_Min_Amount,
-        "Credit_Mix": Credit_Mix,
-        "Borrower_Tier": Borrower_Tier,
-        "Interest_Rate": Interest_Rate,
-        "Delayed_Dues": Delayed_Dues,
-"Type_of_Loan": "; ".join(Type_of_Loan) if Type_of_Loan else "Personal Loan",
+        "Delay_from_due_date": Delay_from_due_date,
         "Payment_Behaviour": Payment_Behaviour,
-        "Total_Payment_Made": Total_Payment_Made,
-        "Age": Age,
-        "Credit_Default": Credit_Default,
-        "Num_Payment_Late": Num_Payment_Late
+        "Borrower_Tier": Borrower_Tier,
+        "Total_EMI_per_month": Total_EMI_per_month,
+        "Amount_invested_monthly": Amount_invested_monthly,
+        "Monthly_Balance": Monthly_Balance,
+        "Payment_of_Min_Amount": Payment_of_Min_Amount,
+        "Credit_Utilization_Ratio": Credit_Utilization_Ratio,
+        "Total_Payment_Made": Total_Payment_Made
     }
     
     try:
         df_input = pd.DataFrame([input_data])
-        # Use model's built-in predict methods directly (expects DataFrame)
+        # model.predict_proba/proba handles FULL preprocessing internally!
         proba = model.predict_proba(df_input)[:, 1][0]
         pred_class = model.predict(df_input)[0]
-        df_processed = preprocess_input(input_data)  # For display/debug
-        st.write(f"Processed shape for display: {df_processed.shape}")
+        df_processed = preprocess_for_display(input_data)  # Display only
         
         # FICO-style score (higher proba[risky] → lower score)
         risk_prob = proba

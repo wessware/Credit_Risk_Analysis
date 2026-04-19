@@ -19,7 +19,7 @@ st.divider()
 
 @st.cache_resource
 def load_model():
-    model_path = "pickled_models/kingametric_xgb_lean_1.pkl"
+    model_path = "pickled_models/kingametric_xgb_lean_2.pkl"
     model = joblib.load(model_path)
     st.success(f"✅ KingaMetricXGB Pipeline loaded. Features: {getattr(model, 'feature_names', 'N/A')}, dim: {len(getattr(model, 'feature_names', [])) if hasattr(model, 'feature_names') else 'N/A'}")
     return model

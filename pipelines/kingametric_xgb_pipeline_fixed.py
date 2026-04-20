@@ -149,7 +149,7 @@ class KingaMetricXGB:
         self.xgb_model.fit(X, y)
         print(f"Trained XGB with scale_pos_weight: {scale_pos_weight:.2f}")
 
-    def plot_top_features(self, save_path="visualizations/xgb_top_features_lean.png"):
+    def plot_top_features(self, save_path="visualizations/xgb_top_features_lean_v2.png"):
         """Visualize top 20 features by importance."""
         if self.xgb_model is None:
             raise ValueError("Model not trained.")
@@ -181,7 +181,7 @@ class KingaMetricXGB:
         self.best_threshold = best_t
         print(f"Optimized threshold: {best_t:.3f} (KS: {best_ks:.3f})")
 
-    def plot_roc_curve(self, y_true, y_proba, save_path="visualizations/roc_curve_lean.png"):
+    def plot_roc_curve(self, y_true, y_proba, save_path="visualizations/roc_curve_lean_v2.png"):
         """Plot ROC curve."""
         fpr, tpr, _ = roc_curve(y_true, y_proba)
         roc_auc = auc(fpr, tpr)
@@ -203,7 +203,7 @@ class KingaMetricXGB:
 
         plt.show()
 
-    def evaluate(self, y_true, y_proba, y_pred, save_path="visualizations/confusion_matrix_lean.png"):
+    def evaluate(self, y_true, y_proba, y_pred, save_path="visualizations/confusion_matrix_lean_v2.png"):
         """Evaluate with ROC_AUC and Confusion Matrix."""
         auc_score = roc_auc_score(y_true, y_proba)
         c_score = classification_report(y_true, y_pred, target_names=['No Default', 'Default'])
@@ -269,7 +269,7 @@ class KingaMetricXGB:
         proba = self.predict_proba(X)
         return (proba >= self.best_threshold).astype(int)
 
-    def save(self, path="pickled_models/kingametric_xgb__2.pkl"):
+    def save(self, path="pickled_models/kingametric_xgb_v2.pkl"):
         """Save the full pipeline."""
         os.makedirs(os.path.dirname(path), exist_ok=True)
         joblib.dump(self, path)
@@ -277,6 +277,6 @@ class KingaMetricXGB:
 
 if __name__ == '__main__':
     model = KingaMetricXGB()
-    auc = model.train('./datasets/kingametric_lean_dataset.csv') #kingametric_lean_dataset
+    auc = model.train('./datasets/kingametric_lean_v2.csv') #kingametric_lean_dataset
     print(f"Final AUC: {auc:.4f}")
 

@@ -66,6 +66,21 @@ class KingaMetricXGB:
             'Borrower_Tier',
             'Repayment_Stress',
             'Credit_Exposure']
+        self.interaction_features = [
+            'Debt_Stress',
+            'Repayment_Stress',
+            'Liquidity_Index',
+            'Credit_Exposure',
+            'Risk_Index',
+            'Income_Delinq',
+            'Loan_DTI'
+        ]
+        self.polynomial_features = [
+            'Credit_Utilization_Ratio_sq',
+            'normalized_dti_sq',
+            'normalized_emi_sq',
+            'normalized_utilization_sq'
+        ]
 
     def load_and_preprocess(self, filepath):
         """Load data and apply initial preprocessing."""

@@ -33,16 +33,20 @@ st.info(f"Model loaded. Expected input dimension: {expected_dim}")
 def preprocess_for_display(input_data):
     """Mimic pipeline for display only"""
     df = pd.DataFrame([input_data])
-    df['normalized_dti'] = np.clip(df['Outstanding_Debt'] / (df['Annual_Income'] + 1), 0, 1)
-    df['normalized_utilization'] = np.clip(df['Credit_Utilization_Ratio'], 0, 1)
-    df['normalized_emi'] = np.clip(df['Total_EMI_per_month'] / (df['Monthly_Inhand_Salary'] + 1), 0, 1)
-    df['normalized_delinquency'] = np.clip(df['Num_of_Delayed_Payment'] / (df['Num_of_Loan'] + 1), 0, 1)
-    df['normalized_savings'] = np.clip(df['Monthly_Balance'] / (df['Monthly_Inhand_Salary'] + 1), 0, 1)
-    df['normalized_credit_history'] = np.clip(df['Credit_History_Age'] / 840, 0, 1)
+    df['normalized_dti'] = np.clip(df['Outstanding_Debt'] / (df['Annual_Income'] + 1), 0, 1) #✅
+    df['normalized_utilization'] = np.clip(df['Credit_Utilization_Ratio'], 0, 1) #✅
+    df['normalized_emi'] = np.clip(df['Total_EMI_per_month'] / (df['Monthly_Inhand_Salary'] + 1), 0, 1) #✅
+    df['normalized_delinquency'] = np.clip(df['Num_of_Delayed_Payment'] / (df['Num_of_Loan'] + 1), 0, 1) #✅
+    df['normalized_savings'] = np.clip(df['Monthly_Balance'] / (df['Monthly_Inhand_Salary'] + 1), 0, 1)  #✅
+    df['normalized_credit_history'] = np.clip(df['Credit_History_Age'] / 840, 0, 1) #✅
+
     df = model.add_interaction_features(df)
+
     df.replace([np.inf, -np.inf], np.nan, inplace=True)
     df.fillna(0, inplace=True)
+
     st.info(f"Display preview shape: {df.shape}")
+    
     return df
 
 with st.form("xgb_form"):
@@ -94,30 +98,30 @@ with st.form("xgb_form"):
 
 if submitted:
     input_data = {
-        "Annual_Income": Annual_Income,
-        "Monthly_Inhand_Salary": Monthly_Inhand_Salary,
-        "Num_Bank_Accounts": Num_Bank_Accounts,
-        "Num_Credit_Card": Num_Credit_Card,
-        "Interest_Rate": Interest_Rate,
-        "Num_of_Loan": Num_of_Loan,
-        "Type_of_Loan": "; ".join(Type_of_Loan),
-        "Delayed_Dues": Delayed_Dues,
-        "Num_of_Delayed_Payment": Num_of_Delayed_Payment,
-        "Changed_Credit_Limit": Changed_Credit_Limit,
-        "Num_Credit_Inquiries": Num_Credit_Inquiries,
-        "Credit_Mix": Credit_Mix,
-        "Outstanding_Debt": Outstanding_Debt,
-        "Credit_History_Age": Credit_History_Age,
-        "Delay_from_due_date": Delay_from_due_date,
-        "Payment_Behaviour": Payment_Behaviour,
-        "Total_EMI_per_month": Total_EMI_per_month,
-        "Amount_invested_monthly": Amount_invested_monthly,
-        "Monthly_Balance": Monthly_Balance,
-        "Payment_of_Min_Amount": Payment_of_Min_Amount,
-        "Credit_Utilization_Ratio": Credit_Utilization_Ratio,
-        "Total_Payment_Made": Total_Payment_Made,
-        "Borrower_Tier": Borrower_Tier
-    }
+        "Annual_Income": Annual_Income, #✅
+        "Monthly_Inhand_Salary": Monthly_Inhand_Salary, #✅
+        "Num_Bank_Accounts": Num_Bank_Accounts, #✅
+        "Num_Credit_Card": Num_Credit_Card, #✅
+        "Interest_Rate": Interest_Rate, #✅
+        "Num_of_Loan": Num_of_Loan, #✅
+        "Type_of_Loan": "; ".join(Type_of_Loan), #❌
+        "Delayed_Dues": Delayed_Dues, #❌
+        "Num_of_Delayed_Payment": Num_of_Delayed_Payment, #leaky #❌
+        "Changed_Credit_Limit": Changed_Credit_Limit, #✅
+        "Num_Credit_Inquiries": Num_Credit_Inquiries, #✅
+        "Credit_Mix": Credit_Mix, #✅
+        "Outstanding_Debt": Outstanding_Debt, #✅
+        "Credit_History_Age": Credit_History_Age, #✅
+        "Delay_from_due_date": Delay_from_due_date, #leaky #❌
+        "Payment_Behaviour": Payment_Behaviour, #leaky #❌
+        "Total_EMI_per_month": Total_EMI_per_month,#✅
+        "Amount_invested_monthly": Amount_invested_monthly, #❌
+        "Monthly_Balance": Monthly_Balance, #✅
+        "Payment_of_Min_Amount": Payment_of_Min_Amount, #✅
+        "Credit_Utilization_Ratio": Credit_Utilization_Ratio, #✅
+        "Total_Payment_Made": Total_Payment_Made, #❌ 
+        "Borrower_Tier": Borrower_Tier #✅
+    } #20 features + 6 engineered features + 7 interactions + 4 polynomial features = 37 total features 
     
     try:
         df_input = pd.DataFrame([input_data])

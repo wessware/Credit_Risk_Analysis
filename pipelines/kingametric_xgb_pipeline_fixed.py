@@ -34,38 +34,38 @@ class KingaMetricXGB:
             'random_state': 42
         }
         self.primary_features = [
-            'Annual_Income',
-            'Monthly_Inhand_Salary',
-            'Num_Bank_Accounts',
-            'Num_Credit_Card',
-            'Interest_Rate',
-            'Num_of_Loan',
-            'Delay_from_due_date',
-            'Num_of_Delayed_Payment',
-            'Changed_Credit_Limit',
-            'Num_Credit_Inquiries',
-            'Credit_Mix',
-            'Outstanding_Debt',
-            'Credit_Utilization_Ratio',
-            'Credit_History_Age',
-            'Payment_of_Min_Amount',
-            'Total_EMI_per_month',
-            'Payment_Behaviour',
-            'Monthly_Balance',
-            'normalized_dti',
-            'normalized_emi',
-            'normalized_delinquency',
-            'normalized_credit_history',
-            'normalized_savings',
-            'normalized_utilization',
-            'normalized_utilization_risk',
-            'normalized_inquiry_intensity',
-            'behavioral_risk_indicator',
-            'credit_mix_quality',
-            'normalized_savings_capacity_ratio',
-            'Borrower_Tier',
-            'Repayment_Stress',
-            'Credit_Exposure']
+            'Annual_Income', #✅
+            'Monthly_Inhand_Salary', #✅
+            'Num_Bank_Accounts', #✅
+            'Num_Credit_Card', #✅
+            'Interest_Rate', #✅
+            'Num_of_Loan', #✅
+            'Delay_from_due_date', #leaky
+            'Num_of_Delayed_Payment', #leaky
+            'Changed_Credit_Limit', #✅
+            'Num_Credit_Inquiries', #✅
+            'Credit_Mix', #✅
+            'Outstanding_Debt', #✅
+            'Credit_Utilization_Ratio', #✅
+            'Credit_History_Age',#✅
+            'Payment_of_Min_Amount',#✅
+            'Total_EMI_per_month',#✅
+            'Payment_Behaviour', #leaky
+            'Monthly_Balance', #✅
+            'normalized_dti', #✅
+            'normalized_emi', #✅
+            'normalized_delinquency', #✅
+            'normalized_credit_history', #✅
+            'normalized_savings', #✅
+            'normalized_utilization', #✅
+            'normalized_utilization_risk', #❌ delete
+            'normalized_inquiry_intensity', #❌
+            'behavioral_risk_indicator', #❌ delete
+            'credit_mix_quality', #❌ delete
+            'normalized_savings_capacity_ratio', #❌ delete
+            'Borrower_Tier', #✅
+            'Repayment_Stress', #❌ keep interaction but delete from primary features
+            'Credit_Exposure'] #❌ delete
         self.interaction_features = [
             'Debt_Stress',
             'Repayment_Stress',

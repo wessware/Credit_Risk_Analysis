@@ -33,6 +33,39 @@ class KingaMetricXGB:
             'tree_method': 'hist',
             'random_state': 42
         }
+        self.primary_features = [
+            'Annual_Income',
+            'Monthly_Inhand_Salary',
+            'Num_Bank_Accounts',
+            'Num_Credit_Card',
+            'Interest_Rate',
+            'Num_of_Loan',
+            'Delay_from_due_date',
+            'Num_of_Delayed_Payment',
+            'Changed_Credit_Limit',
+            'Num_Credit_Inquiries',
+            'Credit_Mix',
+            'Outstanding_Debt',
+            'Credit_Utilization_Ratio',
+            'Credit_History_Age',
+            'Payment_of_Min_Amount',
+            'Total_EMI_per_month',
+            'Payment_Behaviour',
+            'Monthly_Balance',
+            'normalized_dti',
+            'normalized_emi',
+            'normalized_delinquency',
+            'normalized_credit_history',
+            'normalized_savings',
+            'normalized_utilization',
+            'normalized_utilization_risk',
+            'normalized_inquiry_intensity',
+            'behavioral_risk_indicator',
+            'credit_mix_quality',
+            'normalized_savings_capacity_ratio',
+            'Borrower_Tier',
+            'Repayment_Stress',
+            'Credit_Exposure']
 
     def load_and_preprocess(self, filepath):
         """Load data and apply initial preprocessing."""
@@ -49,38 +82,27 @@ class KingaMetricXGB:
     def add_interaction_features(self, df):
         """Add interaction, polynomial, and binned features."""
         df = df.copy()
-        # Original interactions
+        # 1
         df["Debt_Stress"] = df.get("normalized_dti", pd.Series(0, index=df.index)) * df.get("normalized_utilization", pd.Series(0, index=df.index))
+        #2
         df["Repayment_Stress"] = df.get("normalized_emi", pd.Series(0, index=df.index)) * df.get("normalized_delinquency", pd.Series(0, index=df.index))
+        #3
         df["Liquidity_Index"] = df.get("normalized_savings", pd.Series(0, index=df.index)) * df.get("normalized_emi", pd.Series(0, index=df.index))
+        #4
         df["Credit_Exposure"] = df["Num_Credit_Card"] * df["Credit_Utilization_Ratio"]
-        df["Risk_Index"] = (
-            df.get("normalized_dti", 0) +
-            df.get("normalized_utilization", 0) +
-            df.get("normalized_delinquency", 0)
-        ) / 3
-        # Advanced
+        #5
+        df["Risk_Index"] = (df.get("normalized_dti", 0) + df.get("normalized_utilization", 0) + df.get("normalized_delinquency", 0)) / 3
+        #6
         df["Income_Delinq"] = df["Annual_Income"] * df.get("normalized_delinquency", 0)
+        #7
         df["Loan_DTI"] = df["Num_of_Loan"] * df.get("normalized_dti", 0)
-        # Value-based Income_Q assignment (Solution 2 - robust for all cases)
-        def assign_income_quartile(income):
-            if pd.isna(income):
-                return 'Q2'
-            if income < 30000:
-                return 'Q1'
-            elif income < 60000:
-                return 'Q2'
-            elif income < 100000:
-                return 'Q3'
-            else:
-                return 'Q4'
-        df["Income_Q"] = df["Annual_Income"].apply(assign_income_quartile)
-        # Poly features
-        for feat in ['Credit_Utilization_Ratio', 'normalized_dti']:
+        # 8, 9, 10, 11
+        for feat in ['Credit_Utilization_Ratio', 'normalized_dti', 'normalized_emi', 'normalized_utilization']:
             if feat in df.columns:
                 df[f'{feat}_sq'] = df[feat]**2
-                df[f'{feat}_log'] = np.log1p(df[feat])
-        return df
+                #df[f'{feat}_log'] = np.log1p(df[feat])
+
+        return df #32 primary features + 7 interactions + 4 polynomial - leaky features = 39 total features
 
     def target_encode(self, X, y=None, fit=False):
         """Target encode categorical columns."""
@@ -232,7 +254,7 @@ class KingaMetricXGB:
         proba = self.predict_proba(X)
         return (proba >= self.best_threshold).astype(int)
 
-    def save(self, path="pickled_models/kingametric_xgb_lean_1.pkl"):
+    def save(self, path="pickled_models/kingametric_xgb__2.pkl"):
         """Save the full pipeline."""
         os.makedirs(os.path.dirname(path), exist_ok=True)
         joblib.dump(self, path)

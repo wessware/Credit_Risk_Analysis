@@ -115,9 +115,9 @@ class KingaMetricXGB:
         for feat in ['Credit_Utilization_Ratio', 'normalized_dti', 'normalized_emi', 'normalized_utilization']:
             if feat in df.columns:
                 df[f'{feat}_sq'] = df[feat]**2
-                #df[f'{feat}_log'] = np.log1p(df[feat])
+                df[f'{feat}_log'] = np.log1p(df[feat])
 
-        return df #32 primary features + 7 interactions + 4 polynomial - leaky features = 39 total features
+        return df #32 primary features + 7 interactions + 4 squared + 4 log = 43 total features
 
     def target_encode(self, X, y=None, fit=False):
         """Target encode categorical columns."""
@@ -249,6 +249,7 @@ class KingaMetricXGB:
 
         print("Step 7: Plotting top features...")
         self.plot_top_features()
+        self.plot_roc_curve(y_test, test_proba)
 
         print("Step 8: Saving model...")
         self.save()

@@ -34,52 +34,65 @@ class KingaMetricXGB:
             'random_state': 42
         }
         self.primary_features = [
-            'Annual_Income', #✅
-            'Monthly_Inhand_Salary', #✅
-            'Num_Bank_Accounts', #✅
-            'Num_Credit_Card', #✅
-            'Interest_Rate', #✅
-            'Num_of_Loan', #✅
-            'Delay_from_due_date', #leaky
-            'Num_of_Delayed_Payment', #leaky
-            'Changed_Credit_Limit', #✅
-            'Num_Credit_Inquiries', #✅
-            'Credit_Mix', #✅
-            'Outstanding_Debt', #✅
-            'Credit_Utilization_Ratio', #✅
-            'Credit_History_Age',#✅
-            'Payment_of_Min_Amount',#✅
-            'Total_EMI_per_month',#✅
-            'Payment_Behaviour', #leaky
-            'Monthly_Balance', #✅
-            'normalized_dti', #✅
-            'normalized_emi', #✅
-            'normalized_delinquency', #✅
-            'normalized_credit_history', #✅
-            'normalized_savings', #✅
-            'normalized_utilization', #✅
-            'normalized_utilization_risk', #❌ delete
-            'normalized_inquiry_intensity', #❌
-            'behavioral_risk_indicator', #❌ delete
-            'credit_mix_quality', #❌ delete
-            'normalized_savings_capacity_ratio', #❌ delete
-            'Borrower_Tier', #✅
-            'Repayment_Stress', #❌ keep interaction but delete from primary features
-            'Credit_Exposure'] #❌ delete
+            #RAW FEATURES
+            'Annual_Income', #✅1
+            'Monthly_Inhand_Salary', #✅2
+            'Num_Bank_Accounts', #✅3
+            'Num_Credit_Card', #✅4
+            'Interest_Rate', #✅5
+            'Num_of_Loan', #✅6
+            'Changed_Credit_Limit', #✅7
+            'Num_Credit_Inquiries', #✅8
+            'Credit_Mix', #✅9
+            'Outstanding_Debt', #10
+            'Credit_Utilization_Ratio', #✅11
+            'Credit_History_Age',#✅12
+            'Payment_of_Min_Amount',#✅13
+            'Total_EMI_per_month',#✅14
+            'Monthly_Balance', #✅ 15
+            'Borrower_Tier' #✅16
+
+            #ENGINEERED FEATURES - IN DATASET
+            'normalized_dti', #✅  17
+            'normalized_emi', #✅ 18
+            'normalized_delinquency', #✅ 19
+            'normalized_credit_history', #✅ 20
+            'normalized_savings', #✅ 21
+            'normalized_utilization', #✅ 22
+
+            #NOISE
+            'Delay_from_due_date', #leaky - ❌ delete
+            'Num_of_Delayed_Payment', #leaky - ❌ delete
+            'Payment_Behaviour', #leaky - ❌ delete
+
+            #'normalized_utilization_risk', #❌ delete
+            #'normalized_inquiry_intensity', #❌
+            #'behavioral_risk_indicator', #❌ delete
+            #'credit_mix_quality', #❌ delete
+            #'normalized_savings_capacity_ratio', #❌ delete
+            #'Repayment_Stress', #❌ delete
+            #'Credit_Exposure'] #❌ delete
+        ]
         self.interaction_features = [
-            'Debt_Stress',
-            'Repayment_Stress',
-            'Liquidity_Index',
-            'Credit_Exposure',
-            'Risk_Index',
-            'Income_Delinq',
-            'Loan_DTI'
+            #ENGINEERED FEATURES - NOT IN DATASET 23-29
+            'Debt_Stress', #✅ 23
+            'Repayment_Stress', #✅ 24
+            'Liquidity_Index', #✅ 25
+            'Credit_Exposure', #✅ 26
+            'Risk_Index', #✅ 27
+            'Income_Delinq', #✅ 28
+            'Loan_DTI' #✅ 29
         ]
         self.polynomial_features = [
-            'Credit_Utilization_Ratio_sq',
-            'normalized_dti_sq',
-            'normalized_emi_sq',
-            'normalized_utilization_sq'
+            #ENGINEERED FEATURES - NOT IN DATASET 30-37
+            'Credit_Utilization_Ratio_sq', #✅ 30
+            'normalized_dti_sq', #✅ 31
+            'normalized_emi_sq', #✅ 32
+            'normalized_utilization_sq' #✅ 33
+            'Credit_Utilization_Ratio_log', #✅ 34
+            'normalized_dti_log', #✅ 35
+            'normalized_emi_log',   #✅ 36
+            'normalized_utilization_log' #✅ 37
         ]
 
     def load_and_preprocess(self, filepath):
@@ -111,17 +124,17 @@ class KingaMetricXGB:
         df["Income_Delinq"] = df["Annual_Income"] * df.get("normalized_delinquency", 0)
         #7
         df["Loan_DTI"] = df["Num_of_Loan"] * df.get("normalized_dti", 0)
-        # 8, 9, 10, 11
+        # 8, 9, 10, 11, 12, 13, 14, 15
         for feat in ['normalized_emi', 'normalized_utilization', 'normalized_dti', 'Credit_Utilization_Ratio']:
             if feat in df.columns:
                 df[f'{feat}_sq'] = df[feat]**2
                 df[f'{feat}_log'] = np.log1p(df[feat])
 
-        return df #32 primary features + 7 interactions + 4 squared + 4 log = 43 total features
+        return df #22 original + 7 interaction + 8 polynomial = 37 features total
 
     def target_encode(self, X, y=None, fit=False):
         """Target encode categorical columns."""
-        cat_cols = [c for c in ["Payment_of_Min_Amount", "Credit_Mix", "Borrower_Tier", "Income_Q"] if c in X.columns]
+        cat_cols = [c for c in ["Payment_of_Min_Amount", "Credit_Mix", "Borrower_Tier"] if c in X.columns]
         if fit:
             encoder = ce.TargetEncoder(cols=cat_cols, smoothing=10)
             X_encoded = encoder.fit_transform(X, y)

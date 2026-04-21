@@ -112,7 +112,7 @@ class KingaMetricXGB:
         #7
         df["Loan_DTI"] = df["Num_of_Loan"] * df.get("normalized_dti", 0)
         # 8, 9, 10, 11
-        for feat in ['Credit_Utilization_Ratio', 'normalized_dti', 'normalized_emi', 'normalized_utilization']:
+        for feat in ['normalized_emi', 'normalized_utilization', 'normalized_dti', 'Credit_Utilization_Ratio']:
             if feat in df.columns:
                 df[f'{feat}_sq'] = df[feat]**2
                 df[f'{feat}_log'] = np.log1p(df[feat])

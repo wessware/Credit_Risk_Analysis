@@ -88,7 +88,7 @@ class KingaMetricXGB:
             'Credit_Utilization_Ratio_sq', #✅ 30
             'normalized_dti_sq', #✅ 31
             'normalized_emi_sq', #✅ 32
-            'normalized_utilization_sq' #✅ 33
+            'normalized_utilization_sq', #✅ 33
             'Credit_Utilization_Ratio_log', #✅ 34
             'normalized_dti_log', #✅ 35
             'normalized_emi_log',   #✅ 36
@@ -98,15 +98,44 @@ class KingaMetricXGB:
     def load_and_preprocess(self, filepath):
         """Load data and apply initial preprocessing."""
         df = pd.read_csv(filepath)
-        df = df.drop(columns=[c for c in self.leaky_features if c in df.columns], errors='ignore')
+
+        # Stage 1: Behavioral features
+        df = self.compute_behavioral_features(df)
+
+        # Stage 2: Interaction features
         df = self.add_interaction_features(df)
+
         df.replace([np.inf, -np.inf], np.nan, inplace=True)
         df.fillna(df.median(numeric_only=True), inplace=True)
 
         X = df.drop(columns=['Default_Flag'], axis=1)
         y = df['Default_Flag']
-        return X, y
 
+        return X, y
+    def compute_behavioral_features(self, df):
+        """Compute normalized / behavioral features from raw inputs."""
+        df = df.copy()
+
+        df['normalized_dti'] = np.clip(
+            df['Outstanding_Debt'] / (df['Annual_Income'] + 1), 0, 1
+        )
+        df['normalized_emi'] = np.clip(
+            df['Total_EMI_per_month'] / (df['Monthly_Inhand_Salary'] + 1), 0, 1
+        )
+        df['normalized_delinquency'] = np.clip(
+            df["Num_of_Delayed_Payment"] / (df["Num_of_Loan"] + 1), 0, 1
+        )
+        df['normalized_credit_history'] = np.clip(
+            df['Credit_History_Age'] / 840, 0, 1
+        )
+        df['normalized_savings'] = np.clip(
+            df['Monthly_Balance'] / (df['Monthly_Inhand_Salary'] + 1), 0, 1
+        )
+        df['normalized_utilization'] = np.clip(
+            df['Credit_Utilization_Ratio'], 0, 1
+        )
+
+        return df
     def add_interaction_features(self, df):
         """Add interaction, polynomial, and binned features."""
         df = df.copy()
@@ -149,7 +178,7 @@ class KingaMetricXGB:
         """Select top 30 features using mutual information."""
         mi_scores = mutual_info_classif(X, y, random_state=42)
         mi_scores = pd.Series(mi_scores, index=X.columns).sort_values(ascending=False)
-        top_features = mi_scores.head(35).index
+        top_features = mi_scores.head(30).index
         self.feature_names = top_features.tolist()
         return X[top_features], top_features.tolist()
 
@@ -167,7 +196,7 @@ class KingaMetricXGB:
         if self.xgb_model is None:
             raise ValueError("Model not trained.")
         importances = pd.Series(self.xgb_model.feature_importances_, index=self.feature_names)
-        top20 = importances.nlargest(35)
+        top20 = importances.nlargest(25)
         plt.figure(figsize=(10, 8))
         top20.plot(kind='barh', color='skyblue')
         plt.title('Top 35 XGB Feature Importances')
@@ -247,9 +276,25 @@ class KingaMetricXGB:
         X_temp_encoded = self.target_encode(X_temp, y_temp, fit=True)
         X_test_encoded = self.target_encode(X_test)
 
+        # DROP LEAKY FEATURES
+        X_temp_encoded = X_temp_encoded.drop(
+            columns=[c for c in self.leaky_features if c in X_temp_encoded.columns],
+            errors='ignore'
+        )
+
+        X_test_encoded = X_test_encoded.drop(
+            columns=[c for c in self.leaky_features if c in X_test_encoded.columns],
+            errors='ignore'
+        )
+
         print("Step 4: Feature selection...")
         X_temp_sel, _ = self.feature_selection(X_temp_encoded, y_temp)
         X_test_sel = X_test_encoded[self.feature_names]
+
+        print(f"Selected features count: {len(self.feature_names)}")    
+        assert len(self.feature_names) == 30, "Feature selection failed!"
+
+        self.expected_n_features = len(self.feature_names)
 
         print("Step 5: Training XGB...")
         self.train_model(X_temp_sel, y_temp)
@@ -271,19 +316,42 @@ class KingaMetricXGB:
 
     def predict_proba(self, X, already_encoded=False):
         """Predict probabilities."""
+        X = X.copy()
+
+        # Stage 1: Behavioral features
+        X = self.compute_behavioral_features(X)
+
+        # Stage 2: Interaction features
         X = self.add_interaction_features(X)
+
+        # Stage 3: Encoding
         if not already_encoded:
             X = self.target_encode(X)
-        if self.feature_names:
-            X = X[self.feature_names]
+
+        #DROP LEAKY FEATURES HERE
+        X = X.drop(columns=[c for c in self.leaky_features if c in X.columns], errors='ignore')
+        
+        missing = set(self.feature_names) - set(X.columns)
+        extra = set(X.columns) - set(self.feature_names)
+
+        if missing:
+            raise ValueError(f"Missing features at inference: {missing}") 
+        if extra:
+            print(f"Warning: Extra features at inference will be ignored: {extra}")
+
+        X = X.loc[:, self.feature_names].copy()    
+
+        if self.feature_names != self.expected_n_features:
+            raise ValueError(f"Feature mismatch: expected {self.expected_n_features}, got {self.feature_names}")
+
         return self.xgb_model.predict_proba(X)[:, 1]
 
-    def predict(self, X):
+    def predict(self, X):   
         """Predict classes at best threshold."""
         proba = self.predict_proba(X)
         return (proba >= self.best_threshold).astype(int)
 
-    def save(self, path="pickled_models/kingametric_xgb_v2.pkl"):
+    def save(self, path="pickled_models/kingametric_xgb_v2_2.pkl"):
         """Save the full pipeline."""
         os.makedirs(os.path.dirname(path), exist_ok=True)
         joblib.dump(self, path)
@@ -293,4 +361,3 @@ if __name__ == '__main__':
     model = KingaMetricXGB()
     auc = model.train('./datasets/kingametric_lean_v2.csv') #kingametric_lean_dataset
     print(f"Final AUC: {auc:.4f}")
-

@@ -1,7 +1,7 @@
 import sys
 sys.path.append('.')
 
-from pipelines.kingametric_xgb_pipeline import KingaMetricXGB
+from pipelines.Archived.kingametric_xgb_pipeline import KingaMetricXGB
 import pandas as pd
 from sklearn.model_selection import train_test_split
 import numpy as np

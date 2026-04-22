@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import joblib
 import numpy as np
-from pipelines.kingametric_xgb_pipeline import KingaMetricXGB
+from pipelines.Archived.kingametric_xgb_pipeline import KingaMetricXGB
 
 st.set_page_config(page_title="Kinga XGB Credit Score", layout="wide")
 

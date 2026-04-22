@@ -363,7 +363,7 @@ class KingaMetricXGB:
         proba = self.predict_proba(X)
         return (proba >= self.best_threshold).astype(int)
 
-    def save(self, path="pickled_models/kingametric_xgb_schema_locked.pkl"):
+    def save(self, path="pickled_models/kingametric_base_0.pkl"):
         """Save the full fitted pipeline."""
         os.makedirs(os.path.dirname(path), exist_ok=True)
         joblib.dump(self, path)

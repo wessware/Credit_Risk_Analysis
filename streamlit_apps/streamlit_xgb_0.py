@@ -72,7 +72,7 @@ with st.form("xgb_form"):
         Num_Bank_Accounts = st.number_input("Bank Accounts", min_value=0, value=3)
     with col_extra2:
         st.subheader("")
-        st.caption("Delayed payment count is used only to derive secondary risk features. The raw leaky column is stripped before model scoring.")
+        st.caption("")
 
     submitted = st.form_submit_button("Predict with XGB Pipeline", use_container_width=True)
 

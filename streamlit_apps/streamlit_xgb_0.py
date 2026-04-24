@@ -22,7 +22,7 @@ st.divider()
 
 @st.cache_resource
 def load_model():
-    model_path = "pickled_models/kingametric_base_0.pkl"
+    model_path = "pickled_models/kingametric_base_1.pkl"
     model = joblib.load(model_path)
     raw_features = getattr(model, "raw_input_features", [])
     selected_features = getattr(model, "feature_names", [])

@@ -165,13 +165,15 @@ class KingaMetricXGB:
             "normalized_emi",
             "normalized_utilization",
             "normalized_dti",
-            "Credit_Utilization_Ratio",
+            #"Credit_Utilization_Ratio",
+            "normalized_delinquency",
         ]:
             X[f"{feature}_sq"] = X[feature] ** 2
             X[f"{feature}_log"] = np.log1p(np.clip(X[feature], a_min=0, a_max=None))
 
         X.replace([np.inf, -np.inf], np.nan, inplace=True)
         X.fillna(X.median(numeric_only=True), inplace=True)
+        
         return X
 
     def drop_leaky_source_features(self, df):
@@ -363,7 +365,7 @@ class KingaMetricXGB:
         proba = self.predict_proba(X)
         return (proba >= self.best_threshold).astype(int)
 
-    def save(self, path="pickled_models/kingametric_base_0.pkl"):
+    def save(self, path="pickled_models/kingametric_base_1.pkl"):
         """Save the full fitted pipeline."""
         os.makedirs(os.path.dirname(path), exist_ok=True)
         joblib.dump(self, path)

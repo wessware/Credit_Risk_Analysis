@@ -1,13 +1,17 @@
-import streamlit as st
-import mysql.connector
 import hashlib
+
+import matplotlib.pyplot as plt
+import mysql.connector
+import numpy as np
+import pandas as pd
+import streamlit as st
 
 # -------------------------
 # PAGE CONFIG
 # -------------------------
 st.set_page_config(
     page_title="Credit Risk Scoring",
-    layout="centered"
+    layout="wide"
 )
 
 st.title("FICO Credit Risk Engine")
@@ -15,15 +19,171 @@ st.caption("SQL-Based Composite Credit Scoring")
 
 st.divider()
 
+GRADE_STYLES = {
+    "EXCELLENT": {"color": "#1f7a4d", "label": "Very strong"},
+    "GOOD": {"color": "#2b6cb0", "label": "Healthy"},
+    "FAIR": {"color": "#b7791f", "label": "Mixed"},
+    "POOR": {"color": "#c05621", "label": "Stretched"},
+    "VERY POOR": {"color": "#c53030", "label": "High risk"},
+}
+
+COMPONENT_SPECS = [
+    {
+        "label": "Debt load vs income",
+        "metric_key": "normalized_dti",
+        "weight": 0.25,
+        "health_fn": lambda result: 1 - result["normalized_dti"],
+        "observed_fn": lambda result: f"{result['normalized_dti']:.0%}",
+        "why": "A lower debt-to-income burden usually leaves more room to absorb repayments.",
+    },
+    {
+        "label": "Monthly payment breathing room",
+        "metric_key": "normalized_emi",
+        "weight": 0.20,
+        "health_fn": lambda result: 1 - result["normalized_emi"],
+        "observed_fn": lambda result: f"{result['normalized_emi']:.0%}",
+        "why": "A smaller EMI share means less monthly cash strain.",
+    },
+    {
+        "label": "Payment consistency",
+        "metric_key": "normalized_delinquency",
+        "weight": 0.20,
+        "health_fn": lambda result: 1 - result["normalized_delinquency"],
+        "observed_fn": lambda result: f"{result['normalized_delinquency']:.0%}",
+        "why": "Fewer payment delays are a strong signal of reliable repayment behavior.",
+    },
+    {
+        "label": "Credit history depth",
+        "metric_key": "normalized_credit_history",
+        "weight": 0.15,
+        "health_fn": lambda result: result["normalized_credit_history"],
+        "observed_fn": lambda result: f"{result['Credit_History_Age']:.0f} months",
+        "why": "A longer credit history gives more evidence that repayment behavior is established.",
+    },
+    {
+        "label": "Cash buffer",
+        "metric_key": "normalized_savings",
+        "weight": 0.10,
+        "health_fn": lambda result: result["normalized_savings"],
+        "observed_fn": lambda result: f"{result['normalized_savings']:.0%}",
+        "why": "A stronger monthly balance provides cushion if expenses rise or income is interrupted.",
+    },
+    {
+        "label": "Credit usage discipline",
+        "metric_key": "normalized_utilization",
+        "weight": 0.10,
+        "health_fn": lambda result: 1 - result["normalized_utilization"],
+        "observed_fn": lambda result: f"{result['normalized_utilization']:.0%}",
+        "why": "Lower utilization usually means more unused credit headroom and less revolving pressure.",
+    },
+]
+
+
+def build_sql_component_table(result):
+    rows = []
+    for spec in COMPONENT_SPECS:
+        health_score = float(np.clip(spec["health_fn"](result), 0, 1))
+        max_points = spec["weight"] * 550
+        earned_points = health_score * max_points
+        points_left = max_points - earned_points
+        rows.append(
+            {
+                "Factor": spec["label"],
+                "Weight": spec["weight"],
+                "Health score": health_score,
+                "What the app saw": spec["observed_fn"](result),
+                "Score points earned": earned_points,
+                "Score points left on the table": points_left,
+                "Why it matters": spec["why"],
+            }
+        )
+    return pd.DataFrame(rows).sort_values("Score points left on the table", ascending=False)
+
+
+def render_sql_summary(component_df):
+    drags = component_df.sort_values("Score points left on the table", ascending=False).head(3)
+    strengths = component_df.sort_values("Score points earned", ascending=False).head(3)
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("#### Main pressures on the score")
+        for _, row in drags.iterrows():
+            st.write(
+                f"- **{row['Factor']}**: {row['Why it matters']} Current signal: `{row['What the app saw']}`. "
+                f"Estimated points missed: `{row['Score points left on the table']:.1f}`."
+            )
+
+    with col2:
+        st.markdown("#### Main strengths supporting the score")
+        for _, row in strengths.iterrows():
+            st.write(
+                f"- **{row['Factor']}**: {row['Why it matters']} Current signal: `{row['What the app saw']}`. "
+                f"Points contributing to score: `{row['Score points earned']:.1f}`."
+            )
+
+
+def plot_sql_score_breakdown(component_df):
+    plot_df = component_df.sort_values("Score points earned")
+    fig, ax = plt.subplots(figsize=(10, 5.2))
+    ax.barh(plot_df["Factor"], plot_df["Score points earned"], color="#2f855a", label="Points earned")
+    ax.barh(
+        plot_df["Factor"],
+        plot_df["Score points left on the table"],
+        left=plot_df["Score points earned"],
+        color="#e2e8f0",
+        label="Available but not earned"
+    )
+    ax.set_title("How each score component built the final FICO result")
+    ax.set_xlabel("FICO points within each component")
+    ax.set_ylabel("")
+    ax.grid(axis="x", alpha=0.2)
+    ax.legend(loc="lower right")
+
+    for idx, (_, row) in enumerate(plot_df.iterrows()):
+        ax.text(row["Score points earned"] + 1, idx, row["What the app saw"], va="center", ha="left", fontsize=9)
+
+    plt.tight_layout()
+    return fig
+
+
+def plot_sql_health_profile(component_df):
+    plot_df = component_df.sort_values("Health score")
+    fig, ax = plt.subplots(figsize=(10, 4.8))
+    colors = ["#d1495b" if score < 0.4 else "#ed8936" if score < 0.7 else "#2f855a" for score in plot_df["Health score"]]
+    ax.barh(plot_df["Factor"], plot_df["Health score"] * 100, color=colors)
+    ax.set_xlim(0, 100)
+    ax.set_title("Health of each major credit dimension")
+    ax.set_xlabel("Stronger position")
+    ax.set_ylabel("")
+    ax.grid(axis="x", alpha=0.2)
+
+    for idx, (_, row) in enumerate(plot_df.iterrows()):
+        ax.text(min((row["Health score"] * 100) + 1.5, 99), idx, row["What the app saw"], va="center", ha="left", fontsize=9)
+
+    plt.tight_layout()
+    return fig
+
+
+def describe_sql_profile(score, rating, composite_score):
+    tone = {
+        "EXCELLENT": "The rule-based engine sees a strong profile with solid repayment capacity and low visible stress.",
+        "GOOD": "The profile is healthy overall, though a few areas could still improve the score.",
+        "FAIR": "The profile is balanced between supportive signals and visible repayment pressure.",
+        "POOR": "Several weighted components are weak enough to materially drag the score down.",
+        "VERY POOR": "The rule-based engine sees multiple high-pressure signals across the major score drivers.",
+    }
+    return f"{tone[rating]} Composite score strength is {composite_score:.1%}, which maps to a FICO score of {score}."
+
+
 # -------------------------
 # DB CONFIG - TOP LEVEL
 # -------------------------
-if 'db_creds' not in st.session_state:
+if "db_creds" not in st.session_state:
     st.session_state.db_creds = None
     st.session_state.db_hash = None
 
 # Secrets priority
-if st.secrets and 'host' in st.secrets:
+if st.secrets and "host" in st.secrets:
     creds_str = str(st.secrets)
     if st.session_state.db_hash != hashlib.md5(creds_str.encode()).hexdigest():
         try:
@@ -43,7 +203,7 @@ with st.sidebar:
     user = st.text_input("User:", value="root")
     password = st.text_input("Password:", type="password", value="WECHALE$0398_wess")
     database = st.text_input("Database:", value="kingametrics")
-    
+
     if st.button("Test Connection", key="sidebar_test"):
         creds_str = f"{host}{user}{password}{database}"
         if st.session_state.db_hash != hashlib.md5(creds_str.encode()).hexdigest():
@@ -60,26 +220,24 @@ if not st.session_state.db_creds:
     st.error("To proceed please connect to the Kingametric Database")
     st.stop()
 
+
 @st.cache_resource(ttl=6000)
 def get_connection(_hash):
     return mysql.connector.connect(**st.session_state.db_creds)
 
-# ------------------------- 
+
+# -------------------------
 # SQL EXECUTION
 # -------------------------
 def run_scoring(input_data):
     conn = None
     try:
         conn = get_connection(st.session_state.db_hash)
-        # Ping/reconnect logic
         if not conn.is_connected():
             conn.reconnect(attempts=2, delay=1)
-        
-        #cursor = conn.cursor()
-        #cursor.execute("SELECT 1")
-        #cursor.close()
+
         conn.ping(reconnect=True)
-        cursor = conn.cursor(dictionary=True) 
+        cursor = conn.cursor(dictionary=True)
 
         query = """
         SELECT *,
@@ -130,6 +288,7 @@ def run_scoring(input_data):
         if conn and conn.is_connected():
             conn.close()
 
+
 # -------------------------
 # FORM
 # -------------------------
@@ -145,7 +304,7 @@ with st.form("credit_form"):
         Total_EMI_per_month = st.number_input("Monthly EMI", min_value=0.0, value=500.0)
         Num_of_Loan = st.number_input("Loans", min_value=1, max_value=50, value=2)
         Num_of_Delayed_Payment = st.number_input("Delays", min_value=0, value=1)
-    
+
     col3, col4 = st.columns(2)
     with col3:
         st.subheader("Credit")
@@ -165,17 +324,55 @@ if submitted:
         Credit_History_Age=Credit_History_Age, Monthly_Balance=Monthly_Balance,
         Credit_Utilization_Ratio=Credit_Utilization_Ratio
     )
-    
+
     result = run_scoring(input_data)
-    
+
     st.divider()
     if result:
         score = int(result["Credit_Score"])
         rating = result["Credit_Score_Rating"]
-        st.metric("FICO Score", score, delta=None)
-        st.markdown(f"**Grade: {rating}**")
-        
-        color = {"EXCELLENT": "🟢", "GOOD": "🔵", "FAIR": "🟡", "POOR": "🟠", "VERY POOR": "🔴"}[rating]
-        st.markdown(f"{color} **{rating} Profile**")
+        composite_score = float(result["Composite_Credit_Risk_Score"])
+        grade_style = GRADE_STYLES[rating]
+        component_df = build_sql_component_table(result)
+
+        metric_col1, metric_col2, metric_col3 = st.columns(3)
+        with metric_col1:
+            st.metric("FICO Score", score)
+        with metric_col2:
+            st.metric("Composite score strength", f"{composite_score:.1%}")
+        with metric_col3:
+            st.metric("Grade", rating, delta=grade_style["label"])
+
+        st.markdown(
+            f"""
+            <div style="padding: 1rem 1.2rem; border-radius: 0.9rem; background: {grade_style['color']}18; border: 1px solid {grade_style['color']}55;">
+                <div style="font-size: 1.1rem; font-weight: 700; color: {grade_style['color']};">{rating} profile</div>
+                <div style="margin-top: 0.35rem;">{describe_sql_profile(score, rating, composite_score)}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        render_sql_summary(component_df)
+
+        chart_col1, chart_col2 = st.columns(2)
+        with chart_col1:
+            st.markdown("#### Visual 1: Score build-up by weighted component")
+            st.pyplot(plot_sql_score_breakdown(component_df), clear_figure=True, use_container_width=True)
+        with chart_col2:
+            st.markdown("#### Visual 2: Credit health profile")
+            st.pyplot(plot_sql_health_profile(component_df), clear_figure=True, use_container_width=True)
+
+        detail_df = component_df.copy()
+        detail_df["Weight"] = detail_df["Weight"].map(lambda value: f"{value:.0%}")
+        detail_df["Health score"] = detail_df["Health score"].map(lambda value: f"{value:.0%}")
+        detail_df["Score points earned"] = detail_df["Score points earned"].map(lambda value: f"{value:.1f}")
+        detail_df["Score points left on the table"] = detail_df["Score points left on the table"].map(lambda value: f"{value:.1f}")
+
+        st.markdown("#### Factor-by-factor explanation")
+        st.dataframe(detail_df, use_container_width=True, hide_index=True)
+
+        with st.expander("Submitted inputs and SQL raw outputs", expanded=False):
+            st.json({"inputs": input_data, "sql_result": result})
     else:
         st.error("No score - check logs")

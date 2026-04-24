@@ -1,10 +1,16 @@
 import hashlib
+import os
+import sys
 
 import matplotlib.pyplot as plt
 import mysql.connector
 import numpy as np
 import pandas as pd
 import streamlit as st
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from python_scripts.kenya_counties import kenya_counties
 
 # -------------------------
 # PAGE CONFIG
@@ -25,6 +31,58 @@ GRADE_STYLES = {
     "FAIR": {"color": "#b7791f", "label": "Mixed"},
     "POOR": {"color": "#c05621", "label": "Stretched"},
     "VERY POOR": {"color": "#c53030", "label": "High risk"},
+}
+
+DEMOGRAPHIC_IMPACT_CAP = 0.20
+
+COUNTY_POPULATION_PROXIES = {
+    "Mombasa": 1320000,
+    "Kwale": 640000,
+    "Kilifi": 1550000,
+    "Lamu": 175000,
+    "Tana River": 345000,
+    "Taita-Taveta": 390000,
+    "Garissa": 980000,
+    "Wajir": 910000,
+    "Mandera": 1120000,
+    "Marsabit": 510000,
+    "Isiolo": 320000,
+    "Meru": 1650000,
+    "Tharaka-Nithi": 470000,
+    "Embu": 680000,
+    "Kitui": 1240000,
+    "Machakos": 1430000,
+    "Makueni": 1010000,
+    "Nyandarua": 710000,
+    "Nyeri": 810000,
+    "Kirinyaga": 640000,
+    "Murang'a": 1110000,
+    "Kiambu": 2620000,
+    "Turkana": 980000,
+    "West Pokot": 720000,
+    "Samburu": 350000,
+    "Trans-Nzoia": 1110000,
+    "Uasin Gishu": 1280000,
+    "Elgeyo-Marakwet": 450000,
+    "Nandi": 1010000,
+    "Baringo": 790000,
+    "Laikipia": 590000,
+    "Nakuru": 2380000,
+    "Narok": 1230000,
+    "Kajiado": 1210000,
+    "Kericho": 930000,
+    "Bomet": 920000,
+    "Kakamega": 2040000,
+    "Vihiga": 650000,
+    "Bungoma": 1760000,
+    "Busia": 960000,
+    "Siaya": 1000000,
+    "Kisumu": 1290000,
+    "Homa Bay": 1180000,
+    "Migori": 1210000,
+    "Kisii": 1320000,
+    "Nyamira": 680000,
+    "Nairobi": 4560000,
 }
 
 COMPONENT_SPECS = [
@@ -78,6 +136,97 @@ COMPONENT_SPECS = [
     },
 ]
 
+DEMOGRAPHIC_SPECS = [
+    {
+        "key": "gender",
+        "label": "Gender",
+        "weight": 0.05,
+        "score_fn": lambda data, _: 0.55 if data["gender"] == "Male" else 0.45,
+        "observed_fn": lambda data, _: data["gender"],
+        "why": "This placeholder demographic policy slightly favors male applicants, as requested.",
+    },
+    {
+        "key": "marital_status",
+        "label": "Marital status",
+        "weight": 0.10,
+        "score_fn": lambda data, _: {"Single": 0.45, "Married": 1.00, "Divorced": 0.30}[data["marital_status"]],
+        "observed_fn": lambda data, _: data["marital_status"],
+        "why": "Married applicants are given the strongest stability score in this demographic policy.",
+    },
+    {
+        "key": "dependents",
+        "label": "Number of dependents",
+        "weight": 0.15,
+        "score_fn": lambda data, _: float(np.clip(data["dependents"] / 6, 0, 1)),
+        "observed_fn": lambda data, _: str(data["dependents"]),
+        "why": "More dependents receive a higher score under the configured weighting rule.",
+    },
+    {
+        "key": "education_level",
+        "label": "Education level",
+        "weight": 0.10,
+        "score_fn": lambda data, _: {"Primary": 0.25, "Secondary": 0.50, "College": 0.75, "University": 1.00}[data["education_level"]],
+        "observed_fn": lambda data, _: data["education_level"],
+        "why": "Higher education levels are assumed to correlate with better long-term earning resilience.",
+    },
+    {
+        "key": "employment_status",
+        "label": "Employment status",
+        "weight": 0.15,
+        "score_fn": lambda data, _: {
+            "Unemployed": 0.15,
+            "Freelancer": 0.45,
+            "Contractor": 0.65,
+            "Employed": 0.85,
+            "Employed-PNP": 1.00,
+        }[data["employment_status"]],
+        "observed_fn": lambda data, _: data["employment_status"],
+        "why": "Employment types that suggest steadier income get higher demographic support.",
+    },
+    {
+        "key": "age",
+        "label": "Age",
+        "weight": 0.05,
+        "score_fn": lambda data, _: float(np.clip(np.exp(-((data["age"] - 42) / 18) ** 2), 0, 1)),
+        "observed_fn": lambda data, _: f"{data['age']} years",
+        "why": "Middle ages are favored, with the strongest support around the most established working years.",
+    },
+    {
+        "key": "county",
+        "label": "County of residence",
+        "weight": 0.40,
+        "score_fn": lambda data, county_ref: float(county_ref.loc[data["county"], "density_index"]),
+        "observed_fn": lambda data, county_ref: (
+            f"{data['county']} ({county_ref.loc[data['county'], 'density_index']:.0%} density index)"
+        ),
+        "why": "The placeholder policy favors counties with higher population-density proxy scores because of assumed stronger local liquidity.",
+    },
+]
+
+
+def get_rating_from_score(score):
+    if score >= 750:
+        return "EXCELLENT"
+    if score >= 700:
+        return "GOOD"
+    if score >= 650:
+        return "FAIR"
+    if score >= 550:
+        return "POOR"
+    return "VERY POOR"
+
+
+@st.cache_data
+def build_county_density_reference():
+    county_df = pd.DataFrame({"County": kenya_counties})
+    county_df["assumed_population"] = county_df["County"].map(COUNTY_POPULATION_PROXIES).fillna(500000)
+    min_population = county_df["assumed_population"].min()
+    max_population = county_df["assumed_population"].max()
+    county_df["density_index"] = (
+        (county_df["assumed_population"] - min_population) / (max_population - min_population)
+    ).clip(0, 1)
+    return county_df.set_index("County")
+
 
 def build_sql_component_table(result):
     rows = []
@@ -100,13 +249,50 @@ def build_sql_component_table(result):
     return pd.DataFrame(rows).sort_values("Score points left on the table", ascending=False)
 
 
+def build_demographic_component_table(demo_inputs, base_score, county_reference):
+    rows = []
+    for spec in DEMOGRAPHIC_SPECS:
+        feature_score = float(np.clip(spec["score_fn"](demo_inputs, county_reference), 0, 1))
+        weighted_contribution = feature_score * spec["weight"]
+        neutral_contribution = 0.5 * spec["weight"]
+        impact_ratio = ((feature_score - 0.5) / 0.5) * spec["weight"] * DEMOGRAPHIC_IMPACT_CAP
+        impact_points = base_score * impact_ratio
+        rows.append(
+            {
+                "Factor": spec["label"],
+                "Weight": spec["weight"],
+                "Observed": spec["observed_fn"](demo_inputs, county_reference),
+                "Feature score": feature_score,
+                "Weighted contribution": weighted_contribution,
+                "Neutral weighted contribution": neutral_contribution,
+                "Impact ratio": impact_ratio,
+                "Estimated FICO point impact": impact_points,
+                "Effect": "Boosted adjusted score" if impact_points > 0 else "Reduced adjusted score" if impact_points < 0 else "Neutral effect",
+                "Why it matters": spec["why"],
+            }
+        )
+    return pd.DataFrame(rows).sort_values("Estimated FICO point impact", ascending=False)
+
+
+def summarize_demographic_adjustment(demographic_score, base_score):
+    impact_pct = float(np.clip(((demographic_score - 0.5) / 0.5) * DEMOGRAPHIC_IMPACT_CAP, -DEMOGRAPHIC_IMPACT_CAP, DEMOGRAPHIC_IMPACT_CAP))
+    impact_points = base_score * impact_pct
+    adjusted_score = int(round(np.clip(base_score + impact_points, 300, 850)))
+    return {
+        "demographic_score": demographic_score,
+        "impact_pct": impact_pct,
+        "impact_points": adjusted_score - base_score,
+        "adjusted_score": adjusted_score,
+    }
+
+
 def render_sql_summary(component_df):
     drags = component_df.sort_values("Score points left on the table", ascending=False).head(3)
     strengths = component_df.sort_values("Score points earned", ascending=False).head(3)
 
     col1, col2 = st.columns(2)
     with col1:
-        st.markdown("#### Main pressures on the score")
+        st.markdown("#### Main pressures on the base score")
         for _, row in drags.iterrows():
             st.write(
                 f"- **{row['Factor']}**: {row['Why it matters']} Current signal: `{row['What the app saw']}`. "
@@ -114,12 +300,40 @@ def render_sql_summary(component_df):
             )
 
     with col2:
-        st.markdown("#### Main strengths supporting the score")
+        st.markdown("#### Main strengths supporting the base score")
         for _, row in strengths.iterrows():
             st.write(
                 f"- **{row['Factor']}**: {row['Why it matters']} Current signal: `{row['What the app saw']}`. "
                 f"Points contributing to score: `{row['Score points earned']:.1f}`."
             )
+
+
+def render_demographic_summary(demographic_df):
+    boosts = demographic_df[demographic_df["Estimated FICO point impact"] > 0].head(3)
+    drags = demographic_df[demographic_df["Estimated FICO point impact"] < 0].sort_values("Estimated FICO point impact").head(3)
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("#### Demographic boosts")
+        if boosts.empty:
+            st.write("No demographic factor rose above the neutral midpoint, so the adjustment did not add score support.")
+        else:
+            for _, row in boosts.iterrows():
+                st.write(
+                    f"- **{row['Factor']}**: {row['Why it matters']} Current signal: `{row['Observed']}`. "
+                    f"Estimated impact: `{row['Estimated FICO point impact']:+.1f}` points."
+                )
+
+    with col2:
+        st.markdown("#### Demographic drags")
+        if drags.empty:
+            st.write("No demographic factor pulled the adjustment down.")
+        else:
+            for _, row in drags.iterrows():
+                st.write(
+                    f"- **{row['Factor']}**: {row['Why it matters']} Current signal: `{row['Observed']}`. "
+                    f"Estimated impact: `{row['Estimated FICO point impact']:+.1f}` points."
+                )
 
 
 def plot_sql_score_breakdown(component_df):
@@ -133,7 +347,7 @@ def plot_sql_score_breakdown(component_df):
         color="#e2e8f0",
         label="Available but not earned"
     )
-    ax.set_title("How each score component built the final FICO result")
+    ax.set_title("How the base rule-based score was built")
     ax.set_xlabel("FICO points within each component")
     ax.set_ylabel("")
     ax.grid(axis="x", alpha=0.2)
@@ -152,13 +366,33 @@ def plot_sql_health_profile(component_df):
     colors = ["#d1495b" if score < 0.4 else "#ed8936" if score < 0.7 else "#2f855a" for score in plot_df["Health score"]]
     ax.barh(plot_df["Factor"], plot_df["Health score"] * 100, color=colors)
     ax.set_xlim(0, 100)
-    ax.set_title("Health of each major credit dimension")
+    ax.set_title("Health of each major rule-based credit dimension")
     ax.set_xlabel("Stronger position")
     ax.set_ylabel("")
     ax.grid(axis="x", alpha=0.2)
 
     for idx, (_, row) in enumerate(plot_df.iterrows()):
         ax.text(min((row["Health score"] * 100) + 1.5, 99), idx, row["What the app saw"], va="center", ha="left", fontsize=9)
+
+    plt.tight_layout()
+    return fig
+
+
+def plot_demographic_impact_chart(demographic_df):
+    plot_df = demographic_df.sort_values("Estimated FICO point impact").copy()
+    fig, ax = plt.subplots(figsize=(10, 5.2))
+    colors = ["#d1495b" if value < 0 else "#2f855a" for value in plot_df["Estimated FICO point impact"]]
+    ax.barh(plot_df["Factor"], plot_df["Estimated FICO point impact"], color=colors)
+    ax.axvline(0, color="#334155", linewidth=1)
+    ax.set_title("Estimated demographic push on the adjusted FICO score")
+    ax.set_xlabel("Estimated FICO point effect relative to the neutral midpoint")
+    ax.set_ylabel("")
+    ax.grid(axis="x", alpha=0.2)
+
+    for idx, (_, row) in enumerate(plot_df.iterrows()):
+        offset = 1 if row["Estimated FICO point impact"] >= 0 else -1
+        align = "left" if row["Estimated FICO point impact"] >= 0 else "right"
+        ax.text(row["Estimated FICO point impact"] + offset, idx, row["Observed"], va="center", ha=align, fontsize=9)
 
     plt.tight_layout()
     return fig
@@ -173,6 +407,23 @@ def describe_sql_profile(score, rating, composite_score):
         "VERY POOR": "The rule-based engine sees multiple high-pressure signals across the major score drivers.",
     }
     return f"{tone[rating]} Composite score strength is {composite_score:.1%}, which maps to a FICO score of {score}."
+
+
+def describe_demographic_adjustment(adjustment):
+    demographic_score = adjustment["demographic_score"]
+    impact_pct = adjustment["impact_pct"]
+    impact_points = adjustment["impact_points"]
+    if impact_points > 0:
+        direction = "lifted"
+    elif impact_points < 0:
+        direction = "reduced"
+    else:
+        direction = "left unchanged"
+
+    return (
+        f"The demographic composite scored {demographic_score:.1%}. Relative to the neutral midpoint of 50%, "
+        f"that {direction} the base FICO by {impact_points:+d} points ({impact_pct:+.1%}), while respecting the ±20% cap."
+    )
 
 
 # -------------------------
@@ -292,7 +543,10 @@ def run_scoring(input_data):
 # -------------------------
 # FORM
 # -------------------------
+county_reference = build_county_density_reference()
+
 with st.form("credit_form"):
+    st.markdown("### Financial inputs")
     col1, col2 = st.columns(2)
     with col1:
         st.subheader("Income & Debt")
@@ -314,40 +568,86 @@ with st.form("credit_form"):
         st.subheader("Savings")
         Monthly_Balance = st.number_input("Balance", min_value=0.0, value=1000.0)
 
+    st.markdown("### Demographic composite")
+    with st.container(border=True):
+        st.caption("This second-stage composite is optional. The base SQL score is always computed first, then the demographic score can adjust it by up to 20%.")
+        compare_with_demographics = st.checkbox(
+            "Run a second evaluation with the demographic composite score",
+            value=True,
+            help="When turned off, you will see only the base rule-based score."
+        )
+
+        demo_col1, demo_col2, demo_col3 = st.columns(3)
+        with demo_col1:
+            Gender = st.selectbox("Gender", ["Male", "Female"], index=0)
+            Marital_Status = st.selectbox("Marital Status", ["Single", "Married", "Divorced"], index=1)
+            Number_of_Dependents = st.selectbox("Number of Dependents", list(range(0, 7)), index=1)
+        with demo_col2:
+            Education_Level = st.selectbox("Education Level", ["Primary", "Secondary", "College", "University"], index=2)
+            Employment_Status = st.selectbox(
+                "Employment Status",
+                ["Unemployed", "Freelancer", "Contractor", "Employed", "Employed-PNP"],
+                index=3
+            )
+            Age = st.slider("Age", min_value=15, max_value=85, value=35)
+        with demo_col3:
+            County_of_Residence = st.selectbox("County of Residence", kenya_counties, index=kenya_counties.index("Nairobi"))
+            county_density = float(county_reference.loc[County_of_Residence, "density_index"])
+            county_population = int(county_reference.loc[County_of_Residence, "assumed_population"])
+            st.metric("County density index", f"{county_density:.0%}")
+            st.caption(
+                f"Placeholder population proxy for {County_of_Residence}: {county_population:,}. "
+                "Replace `COUNTY_POPULATION_PROXIES` with real data when available."
+            )
+
     submitted = st.form_submit_button("Evaluate Risk Score", use_container_width=True)
 
 if submitted:
     input_data = dict(
-        Outstanding_Debt=Outstanding_Debt, Annual_Income=Annual_Income,
-        Total_EMI_per_month=Total_EMI_per_month, Monthly_Inhand_Salary=Monthly_Inhand_Salary,
-        Num_of_Delayed_Payment=Num_of_Delayed_Payment, Num_of_Loan=Num_of_Loan,
-        Credit_History_Age=Credit_History_Age, Monthly_Balance=Monthly_Balance,
+        Outstanding_Debt=Outstanding_Debt,
+        Annual_Income=Annual_Income,
+        Total_EMI_per_month=Total_EMI_per_month,
+        Monthly_Inhand_Salary=Monthly_Inhand_Salary,
+        Num_of_Delayed_Payment=Num_of_Delayed_Payment,
+        Num_of_Loan=Num_of_Loan,
+        Credit_History_Age=Credit_History_Age,
+        Monthly_Balance=Monthly_Balance,
         Credit_Utilization_Ratio=Credit_Utilization_Ratio
     )
+    demographic_inputs = {
+        "gender": Gender,
+        "marital_status": Marital_Status,
+        "dependents": int(Number_of_Dependents),
+        "education_level": Education_Level,
+        "employment_status": Employment_Status,
+        "age": int(Age),
+        "county": County_of_Residence,
+    }
 
     result = run_scoring(input_data)
 
     st.divider()
     if result:
-        score = int(result["Credit_Score"])
-        rating = result["Credit_Score_Rating"]
+        base_score = int(result["Credit_Score"])
+        base_rating = result["Credit_Score_Rating"]
         composite_score = float(result["Composite_Credit_Risk_Score"])
-        grade_style = GRADE_STYLES[rating]
+        base_grade_style = GRADE_STYLES[base_rating]
         component_df = build_sql_component_table(result)
 
+        st.markdown("## Evaluation 1: Base rule-based scoring")
         metric_col1, metric_col2, metric_col3 = st.columns(3)
         with metric_col1:
-            st.metric("FICO Score", score)
+            st.metric("Base FICO Score", base_score)
         with metric_col2:
             st.metric("Composite score strength", f"{composite_score:.1%}")
         with metric_col3:
-            st.metric("Grade", rating, delta=grade_style["label"])
+            st.metric("Base grade", base_rating, delta=base_grade_style["label"])
 
         st.markdown(
             f"""
-            <div style="padding: 1rem 1.2rem; border-radius: 0.9rem; background: {grade_style['color']}18; border: 1px solid {grade_style['color']}55;">
-                <div style="font-size: 1.1rem; font-weight: 700; color: {grade_style['color']};">{rating} profile</div>
-                <div style="margin-top: 0.35rem;">{describe_sql_profile(score, rating, composite_score)}</div>
+            <div style="padding: 1rem 1.2rem; border-radius: 0.9rem; background: {base_grade_style['color']}18; border: 1px solid {base_grade_style['color']}55;">
+                <div style="font-size: 1.1rem; font-weight: 700; color: {base_grade_style['color']};">{base_rating} base profile</div>
+                <div style="margin-top: 0.35rem;">{describe_sql_profile(base_score, base_rating, composite_score)}</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -355,12 +655,12 @@ if submitted:
 
         render_sql_summary(component_df)
 
-        chart_col1, chart_col2 = st.columns(2)
-        with chart_col1:
-            st.markdown("#### Visual 1: Score build-up by weighted component")
+        base_chart_col1, base_chart_col2 = st.columns(2)
+        with base_chart_col1:
+            st.markdown("#### Visual 1: Base score build-up")
             st.pyplot(plot_sql_score_breakdown(component_df), clear_figure=True, use_container_width=True)
-        with chart_col2:
-            st.markdown("#### Visual 2: Credit health profile")
+        with base_chart_col2:
+            st.markdown("#### Visual 2: Base credit health profile")
             st.pyplot(plot_sql_health_profile(component_df), clear_figure=True, use_container_width=True)
 
         detail_df = component_df.copy()
@@ -369,10 +669,91 @@ if submitted:
         detail_df["Score points earned"] = detail_df["Score points earned"].map(lambda value: f"{value:.1f}")
         detail_df["Score points left on the table"] = detail_df["Score points left on the table"].map(lambda value: f"{value:.1f}")
 
-        st.markdown("#### Factor-by-factor explanation")
+        st.markdown("#### Base factor-by-factor explanation")
         st.dataframe(detail_df, use_container_width=True, hide_index=True)
 
-        with st.expander("Submitted inputs and SQL raw outputs", expanded=False):
-            st.json({"inputs": input_data, "sql_result": result})
+        if compare_with_demographics:
+            demographic_df = build_demographic_component_table(demographic_inputs, base_score, county_reference)
+            demographic_score = float(demographic_df["Weighted contribution"].sum())
+            adjustment = summarize_demographic_adjustment(demographic_score, base_score)
+            adjusted_score = adjustment["adjusted_score"]
+            adjusted_rating = get_rating_from_score(adjusted_score)
+            adjusted_grade_style = GRADE_STYLES[adjusted_rating]
+
+            st.markdown("## Evaluation 2: Base rule-based scoring + demographic composite")
+            compare_col1, compare_col2, compare_col3, compare_col4 = st.columns(4)
+            with compare_col1:
+                st.metric("Base FICO", base_score)
+            with compare_col2:
+                st.metric("Demographic score", f"{adjustment['demographic_score']:.1%}")
+            with compare_col3:
+                st.metric("Demographic effect", f"{adjustment['impact_pct']:+.1%}", delta=f"{adjustment['impact_points']:+d} points")
+            with compare_col4:
+                st.metric("Adjusted FICO", adjusted_score, delta=adjustment["impact_points"])
+
+            st.markdown(
+                f"""
+                <div style="padding: 1rem 1.2rem; border-radius: 0.9rem; background: {adjusted_grade_style['color']}18; border: 1px solid {adjusted_grade_style['color']}55;">
+                    <div style="font-size: 1.1rem; font-weight: 700; color: {adjusted_grade_style['color']};">{adjusted_rating} adjusted profile</div>
+                    <div style="margin-top: 0.35rem;">{describe_demographic_adjustment(adjustment)}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            summary_left, summary_right = st.columns(2)
+            with summary_left:
+                st.write(
+                    f"**Base score and grade:** `{base_score}` / `{base_rating}`"
+                )
+            with summary_right:
+                st.write(
+                    f"**Adjusted score and grade:** `{adjusted_score}` / `{adjusted_rating}`"
+                )
+
+            render_demographic_summary(demographic_df)
+
+            st.markdown("#### Visual 3: Demographic contribution to the adjusted score")
+            st.pyplot(plot_demographic_impact_chart(demographic_df), clear_figure=True, use_container_width=True)
+
+            demo_detail_df = demographic_df.copy()
+            demo_detail_df["Weight"] = demo_detail_df["Weight"].map(lambda value: f"{value:.0%}")
+            demo_detail_df["Feature score"] = demo_detail_df["Feature score"].map(lambda value: f"{value:.0%}")
+            demo_detail_df["Weighted contribution"] = demo_detail_df["Weighted contribution"].map(lambda value: f"{value:.1%}")
+            demo_detail_df["Impact ratio"] = demo_detail_df["Impact ratio"].map(lambda value: f"{value:+.2%}")
+            demo_detail_df["Estimated FICO point impact"] = demo_detail_df["Estimated FICO point impact"].map(lambda value: f"{value:+.1f}")
+
+            st.markdown("#### Demographic factor-by-factor explanation")
+            st.dataframe(
+                demo_detail_df.loc[:, [
+                    "Factor",
+                    "Weight",
+                    "Observed",
+                    "Feature score",
+                    "Weighted contribution",
+                    "Impact ratio",
+                    "Estimated FICO point impact",
+                    "Effect",
+                    "Why it matters",
+                ]],
+                use_container_width=True,
+                hide_index=True,
+            )
+
+            st.caption(
+                "The demographic composite uses the configured feature weights and a neutral midpoint of 50%. "
+                "Positive deviations lift the base FICO, negative deviations reduce it, and the total effect is capped at ±20%."
+            )
+        else:
+            st.info("Demographic composite was skipped for this run. The result shown above is the base rule-based score only.")
+
+        with st.expander("Submitted inputs and raw outputs", expanded=False):
+            st.json(
+                {
+                    "financial_inputs": input_data,
+                    "demographic_inputs": demographic_inputs,
+                    "sql_result": result,
+                }
+            )
     else:
         st.error("No score - check logs")

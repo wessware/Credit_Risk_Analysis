@@ -15,6 +15,7 @@ except Exception:
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from pipelines.kingametric_base_0 import KingaMetricXGB
+from python_scripts.kenya_counties import kenya_counties
 
 st.set_page_config(
     page_title="Kinga Ensemble Credit Score",
@@ -33,6 +34,125 @@ GRADE_STYLES = {
     "POOR": {"color": "#c05621", "label": "Stretched"},
     "VERY POOR": {"color": "#c53030", "label": "High risk"},
 }
+
+DEMOGRAPHIC_IMPACT_CAP = 0.20
+
+COUNTY_POPULATION_PROXIES = {
+    "Mombasa": 1320000,
+    "Kwale": 640000,
+    "Kilifi": 1550000,
+    "Lamu": 175000,
+    "Tana River": 345000,
+    "Taita-Taveta": 390000,
+    "Garissa": 980000,
+    "Wajir": 910000,
+    "Mandera": 1120000,
+    "Marsabit": 510000,
+    "Isiolo": 320000,
+    "Meru": 1650000,
+    "Tharaka-Nithi": 470000,
+    "Embu": 680000,
+    "Kitui": 1240000,
+    "Machakos": 1430000,
+    "Makueni": 1010000,
+    "Nyandarua": 710000,
+    "Nyeri": 810000,
+    "Kirinyaga": 640000,
+    "Murang'a": 1110000,
+    "Kiambu": 2620000,
+    "Turkana": 980000,
+    "West Pokot": 720000,
+    "Samburu": 350000,
+    "Trans-Nzoia": 1110000,
+    "Uasin Gishu": 1280000,
+    "Elgeyo-Marakwet": 450000,
+    "Nandi": 1010000,
+    "Baringo": 790000,
+    "Laikipia": 590000,
+    "Nakuru": 2380000,
+    "Narok": 1230000,
+    "Kajiado": 1210000,
+    "Kericho": 930000,
+    "Bomet": 920000,
+    "Kakamega": 2040000,
+    "Vihiga": 650000,
+    "Bungoma": 1760000,
+    "Busia": 960000,
+    "Siaya": 1000000,
+    "Kisumu": 1290000,
+    "Homa Bay": 1180000,
+    "Migori": 1210000,
+    "Kisii": 1320000,
+    "Nyamira": 680000,
+    "Nairobi": 4560000,
+}
+
+DEMOGRAPHIC_SPECS = [
+    {
+        "key": "gender",
+        "label": "Gender",
+        "weight": 0.05,
+        "score_fn": lambda data, _: 0.55 if data["gender"] == "Male" else 0.45,
+        "observed_fn": lambda data, _: data["gender"],
+        "why": "This placeholder demographic policy slightly favors male applicants, as requested.",
+    },
+    {
+        "key": "marital_status",
+        "label": "Marital status",
+        "weight": 0.10,
+        "score_fn": lambda data, _: {"Single": 0.45, "Married": 1.00, "Divorced": 0.30}[data["marital_status"]],
+        "observed_fn": lambda data, _: data["marital_status"],
+        "why": "Married applicants are given the strongest stability score in this demographic policy.",
+    },
+    {
+        "key": "dependents",
+        "label": "Number of dependents",
+        "weight": 0.15,
+        "score_fn": lambda data, _: float(np.clip(data["dependents"] / 6, 0, 1)),
+        "observed_fn": lambda data, _: str(data["dependents"]),
+        "why": "More dependents receive a higher score under the configured weighting rule.",
+    },
+    {
+        "key": "education_level",
+        "label": "Education level",
+        "weight": 0.10,
+        "score_fn": lambda data, _: {"Primary": 0.25, "Secondary": 0.50, "College": 0.75, "University": 1.00}[data["education_level"]],
+        "observed_fn": lambda data, _: data["education_level"],
+        "why": "Higher education levels are assumed to correlate with better long-term earning resilience.",
+    },
+    {
+        "key": "employment_status",
+        "label": "Employment status",
+        "weight": 0.15,
+        "score_fn": lambda data, _: {
+            "Unemployed": 0.15,
+            "Freelancer": 0.45,
+            "Contractor": 0.65,
+            "Employed": 0.85,
+            "Employed-PNP": 1.00,
+        }[data["employment_status"]],
+        "observed_fn": lambda data, _: data["employment_status"],
+        "why": "Employment types that suggest steadier income get higher demographic support.",
+    },
+    {
+        "key": "age",
+        "label": "Age",
+        "weight": 0.05,
+        "score_fn": lambda data, _: float(np.clip(np.exp(-((data["age"] - 42) / 18) ** 2), 0, 1)),
+        "observed_fn": lambda data, _: f"{data['age']} years",
+        "why": "Middle ages are favored, with the strongest support around the most established working years.",
+    },
+    {
+        "key": "county",
+        "label": "County of residence",
+        "weight": 0.40,
+        "score_fn": lambda data, county_ref: float(county_ref.loc[data["county"], "density_index"]),
+        "observed_fn": lambda data, county_ref: (
+            f"{data['county']} ({county_ref.loc[data['county'], 'density_index']:.0%} density index)"
+        ),
+        "why": "The placeholder policy favors counties with higher population-density proxy scores because of assumed stronger local liquidity.",
+    },
+]
 
 FRIENDLY_LABELS = {
     "Annual_Income": "Annual income",
@@ -133,6 +253,71 @@ def describe_risk_band(risk_prob, rating):
     return f"{tone[rating]} Estimated default likelihood is {risk_prob:.1%}."
 
 
+def get_rating_from_score(score):
+    if score >= 750:
+        return "EXCELLENT"
+    if score >= 700:
+        return "GOOD"
+    if score >= 650:
+        return "FAIR"
+    if score >= 550:
+        return "POOR"
+    return "VERY POOR"
+
+
+@st.cache_data
+def build_county_density_reference():
+    county_df = pd.DataFrame({"County": kenya_counties})
+    county_df["assumed_population"] = county_df["County"].map(COUNTY_POPULATION_PROXIES).fillna(500000)
+    min_population = county_df["assumed_population"].min()
+    max_population = county_df["assumed_population"].max()
+    county_df["density_index"] = (
+        (county_df["assumed_population"] - min_population) / (max_population - min_population)
+    ).clip(0, 1)
+    return county_df.set_index("County")
+
+
+def build_demographic_component_table(demo_inputs, base_score, county_reference):
+    rows = []
+    for spec in DEMOGRAPHIC_SPECS:
+        feature_score = float(np.clip(spec["score_fn"](demo_inputs, county_reference), 0, 1))
+        weighted_contribution = feature_score * spec["weight"]
+        impact_ratio = ((feature_score - 0.5) / 0.5) * spec["weight"] * DEMOGRAPHIC_IMPACT_CAP
+        impact_points = base_score * impact_ratio
+        rows.append(
+            {
+                "Factor": spec["label"],
+                "Weight": spec["weight"],
+                "Observed": spec["observed_fn"](demo_inputs, county_reference),
+                "Feature score": feature_score,
+                "Weighted contribution": weighted_contribution,
+                "Impact ratio": impact_ratio,
+                "Estimated FICO point impact": impact_points,
+                "Effect": "Boosted adjusted score" if impact_points > 0 else "Reduced adjusted score" if impact_points < 0 else "Neutral effect",
+                "Why it matters": spec["why"],
+            }
+        )
+    return pd.DataFrame(rows).sort_values("Estimated FICO point impact", ascending=False)
+
+
+def summarize_demographic_adjustment(demographic_score, base_score):
+    impact_pct = float(
+        np.clip(
+            ((demographic_score - 0.5) / 0.5) * DEMOGRAPHIC_IMPACT_CAP,
+            -DEMOGRAPHIC_IMPACT_CAP,
+            DEMOGRAPHIC_IMPACT_CAP,
+        )
+    )
+    impact_points = base_score * impact_pct
+    adjusted_score = int(round(np.clip(base_score + impact_points, 300, 850)))
+    return {
+        "demographic_score": demographic_score,
+        "impact_pct": impact_pct,
+        "impact_points": adjusted_score - base_score,
+        "adjusted_score": adjusted_score,
+    }
+
+
 def build_health_dimensions(raw_inputs):
     salary = raw_inputs["Monthly_Inhand_Salary"]
     annual_income = raw_inputs["Annual_Income"]
@@ -217,6 +402,34 @@ def build_xgb_explanation(model, raw_inputs):
     return local_df, importance_df, health_df
 
 
+def render_demographic_summary(demographic_df):
+    boosts = demographic_df[demographic_df["Estimated FICO point impact"] > 0].head(3)
+    drags = demographic_df[demographic_df["Estimated FICO point impact"] < 0].sort_values("Estimated FICO point impact").head(3)
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("#### Demographic boosts")
+        if boosts.empty:
+            st.write("No demographic factor rose above the neutral midpoint, so the adjustment did not add score support.")
+        else:
+            for _, row in boosts.iterrows():
+                st.write(
+                    f"- **{row['Factor']}**: {row['Why it matters']} Current signal: `{row['Observed']}`. "
+                    f"Estimated impact: `{row['Estimated FICO point impact']:+.1f}` points."
+                )
+
+    with col2:
+        st.markdown("#### Demographic drags")
+        if drags.empty:
+            st.write("No demographic factor pulled the adjustment down.")
+        else:
+            for _, row in drags.iterrows():
+                st.write(
+                    f"- **{row['Factor']}**: {row['Why it matters']} Current signal: `{row['Observed']}`. "
+                    f"Estimated impact: `{row['Estimated FICO point impact']:+.1f}` points."
+                )
+
+
 def plot_local_push_chart(local_df):
     plot_df = local_df.head(8).sort_values("contribution")
     fig, ax = plt.subplots(figsize=(10, 5.5))
@@ -250,6 +463,26 @@ def plot_health_profile_chart(health_df):
 
     for idx, (_, row) in enumerate(plot_df.iterrows()):
         ax.text(min((row["score"] * 100) + 1.5, 99), idx, row["observed"], va="center", ha="left", fontsize=9)
+
+    plt.tight_layout()
+    return fig
+
+
+def plot_demographic_impact_chart(demographic_df):
+    plot_df = demographic_df.sort_values("Estimated FICO point impact").copy()
+    fig, ax = plt.subplots(figsize=(10, 5.2))
+    colors = ["#d1495b" if value < 0 else "#2f855a" for value in plot_df["Estimated FICO point impact"]]
+    ax.barh(plot_df["Factor"], plot_df["Estimated FICO point impact"], color=colors)
+    ax.axvline(0, color="#334155", linewidth=1)
+    ax.set_title("Estimated demographic push on the adjusted FICO score")
+    ax.set_xlabel("Estimated FICO point effect relative to the neutral midpoint")
+    ax.set_ylabel("")
+    ax.grid(axis="x", alpha=0.2)
+
+    for idx, (_, row) in enumerate(plot_df.iterrows()):
+        offset = 1 if row["Estimated FICO point impact"] >= 0 else -1
+        align = "left" if row["Estimated FICO point impact"] >= 0 else "right"
+        ax.text(row["Estimated FICO point impact"] + offset, idx, row["Observed"], va="center", ha=align, fontsize=9)
 
     plt.tight_layout()
     return fig
@@ -296,6 +529,23 @@ def render_summary_lists(local_df):
                 st.write(f"- **{row['label']}**: {row['why_it_matters']} Current signal: `{row['observed']}`.")
 
 
+def describe_demographic_adjustment(adjustment):
+    demographic_score = adjustment["demographic_score"]
+    impact_pct = adjustment["impact_pct"]
+    impact_points = adjustment["impact_points"]
+    if impact_points > 0:
+        direction = "lifted"
+    elif impact_points < 0:
+        direction = "reduced"
+    else:
+        direction = "left unchanged"
+
+    return (
+        f"The demographic composite scored {demographic_score:.1%}. Relative to the neutral midpoint of 50%, "
+        f"that {direction} the base XGB FICO by {impact_points:+d} points ({impact_pct:+.1%}), while respecting the +/-20% cap."
+    )
+
+
 @st.cache_resource
 def load_model():
     model_path = "pickled_models/kingametric_base_1.pkl"
@@ -312,8 +562,10 @@ model = load_model()
 raw_features = getattr(model, "raw_input_features", [])
 expected_dim = getattr(model, "expected_n_features", len(getattr(model, "feature_names", [])))
 st.info(f"Model loaded. Expected aligned feature dimension: {expected_dim}")
+county_reference = build_county_density_reference()
 
 with st.form("xgb_form"):
+    st.markdown("### Financial inputs")
     col1, col2, col3 = st.columns(3)
     with col1:
         st.subheader("Income")
@@ -350,7 +602,39 @@ with st.form("xgb_form"):
         st.subheader("")
         st.caption("The score explanation below uses these inputs plus engineered model signals.")
 
-    submitted = st.form_submit_button("Predict with XGB Pipeline", width='stretch')
+    st.markdown("### Demographic composite")
+    with st.container(border=True):
+        st.caption("This second-stage composite is optional. The XGB score is always computed first, then the demographic score can adjust it by up to 20%.")
+        compare_with_demographics = st.checkbox(
+            "Run a second evaluation with the demographic composite score",
+            value=True,
+            help="When turned off, you will see only the base XGB score."
+        )
+
+        demo_col1, demo_col2, demo_col3 = st.columns(3)
+        with demo_col1:
+            Gender = st.selectbox("Gender", ["Male", "Female"], index=0)
+            Marital_Status = st.selectbox("Marital Status", ["Single", "Married", "Divorced"], index=1)
+            Number_of_Dependents = st.selectbox("Number of Dependents", list(range(0, 7)), index=1)
+        with demo_col2:
+            Education_Level = st.selectbox("Education Level", ["Primary", "Secondary", "College", "University"], index=2)
+            Employment_Status = st.selectbox(
+                "Employment Status",
+                ["Unemployed", "Freelancer", "Contractor", "Employed", "Employed-PNP"],
+                index=3
+            )
+            Age = st.slider("Age", min_value=15, max_value=85, value=35)
+        with demo_col3:
+            County_of_Residence = st.selectbox("County of Residence", kenya_counties, index=kenya_counties.index("Nairobi"))
+            county_density = float(county_reference.loc[County_of_Residence, "density_index"])
+            county_population = int(county_reference.loc[County_of_Residence, "assumed_population"])
+            st.metric("County density index", f"{county_density:.0%}")
+            st.caption(
+                f"Placeholder population proxy for {County_of_Residence}: {county_population:,}. "
+                "Replace `COUNTY_POPULATION_PROXIES` with real data when available."
+            )
+
+    submitted = st.form_submit_button("Predict with XGB Pipeline", use_container_width=True)
 
 if submitted:
     input_data = {
@@ -372,6 +656,15 @@ if submitted:
         "Monthly_Balance": Monthly_Balance,
         "Borrower_Tier": Borrower_Tier,
     }
+    demographic_inputs = {
+        "gender": Gender,
+        "marital_status": Marital_Status,
+        "dependents": int(Number_of_Dependents),
+        "education_level": Education_Level,
+        "employment_status": Employment_Status,
+        "age": int(Age),
+        "county": County_of_Residence,
+    }
 
     try:
         df_input = pd.DataFrame([input_data])
@@ -382,24 +675,25 @@ if submitted:
         pred_class = int(model.predict(df_input)[0])
 
         fico_score = int(850 - (risk_prob * 550))
-        rating = "EXCELLENT" if fico_score >= 750 else "GOOD" if fico_score >= 700 else "FAIR" if fico_score >= 650 else "POOR" if fico_score >= 550 else "VERY POOR"
+        rating = get_rating_from_score(fico_score)
         grade_style = GRADE_STYLES[rating]
 
         local_df, importance_df, health_df = build_xgb_explanation(model, input_data)
 
         st.divider()
+        st.markdown("## Evaluation 1: Base XGB scoring")
         score_col, prob_col, band_col = st.columns(3)
         with score_col:
-            st.metric("XGB FICO Score", fico_score)
+            st.metric("Base XGB FICO", fico_score)
         with prob_col:
             st.metric("Default likelihood", f"{risk_prob:.1%}", delta="Higher" if pred_class == 1 else "Lower")
         with band_col:
-            st.metric("Risk grade", rating, delta=grade_style["label"])
+            st.metric("Base grade", rating, delta=grade_style["label"])
 
         st.markdown(
             f"""
             <div style="padding: 1rem 1.2rem; border-radius: 0.9rem; background: {grade_style['color']}18; border: 1px solid {grade_style['color']}55;">
-                <div style="font-size: 1.1rem; font-weight: 700; color: {grade_style['color']};">{rating} profile</div>
+                <div style="font-size: 1.1rem; font-weight: 700; color: {grade_style['color']};">{rating} base profile</div>
                 <div style="margin-top: 0.35rem;">{describe_risk_band(risk_prob, rating)}</div>
             </div>
             """,
@@ -411,15 +705,15 @@ if submitted:
         chart_col1, chart_col2 = st.columns(2)
         with chart_col1:
             st.markdown("#### Visual 1: Top feature pushes")
-            st.pyplot(plot_local_push_chart(local_df), clear_figure=True, width='stretch')
+            st.pyplot(plot_local_push_chart(local_df), clear_figure=True, use_container_width=True)
         with chart_col2:
             st.markdown("#### Visual 2: Credit health profile")
-            st.pyplot(plot_health_profile_chart(health_df), clear_figure=True, width='stretch')
+            st.pyplot(plot_health_profile_chart(health_df), clear_figure=True, use_container_width=True)
 
         table_col1, table_col2 = st.columns([1.6, 1])
         with table_col1:
-            st.markdown("#### Factor-by-factor explanation")
-            st.dataframe(build_driver_table(local_df), width='stretch', hide_index=True)
+            st.markdown("#### Base factor-by-factor explanation")
+            st.dataframe(build_driver_table(local_df), use_container_width=True, hide_index=True)
         with table_col2:
             st.markdown("#### Highest-power model signals")
             top_importance = importance_df.head(8).copy()
@@ -428,13 +722,86 @@ if submitted:
                 top_importance.loc[:, ["label", "importance"]].rename(
                     columns={"label": "Model signal", "importance": "Training importance"}
                 ),
-                width='stretch',
+                use_container_width=True,
                 hide_index=True,
             )
             st.caption("These are the strongest overall signals the trained XGB model tends to rely on.")
 
+        if compare_with_demographics:
+            demographic_df = build_demographic_component_table(demographic_inputs, fico_score, county_reference)
+            demographic_score = float(demographic_df["Weighted contribution"].sum())
+            adjustment = summarize_demographic_adjustment(demographic_score, fico_score)
+            adjusted_score = adjustment["adjusted_score"]
+            adjusted_rating = get_rating_from_score(adjusted_score)
+            adjusted_grade_style = GRADE_STYLES[adjusted_rating]
+
+            st.markdown("## Evaluation 2: Base XGB scoring + demographic composite")
+            compare_col1, compare_col2, compare_col3, compare_col4 = st.columns(4)
+            with compare_col1:
+                st.metric("Base XGB FICO", fico_score)
+            with compare_col2:
+                st.metric("Demographic score", f"{adjustment['demographic_score']:.1%}")
+            with compare_col3:
+                st.metric("Demographic effect", f"{adjustment['impact_pct']:+.1%}", delta=f"{adjustment['impact_points']:+d} points")
+            with compare_col4:
+                st.metric("Adjusted FICO", adjusted_score, delta=adjustment["impact_points"])
+
+            st.markdown(
+                f"""
+                <div style="padding: 1rem 1.2rem; border-radius: 0.9rem; background: {adjusted_grade_style['color']}18; border: 1px solid {adjusted_grade_style['color']}55;">
+                    <div style="font-size: 1.1rem; font-weight: 700; color: {adjusted_grade_style['color']};">{adjusted_rating} adjusted profile</div>
+                    <div style="margin-top: 0.35rem;">{describe_demographic_adjustment(adjustment)}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            summary_left, summary_right = st.columns(2)
+            with summary_left:
+                st.write(f"**Base XGB score and grade:** `{fico_score}` / `{rating}`")
+            with summary_right:
+                st.write(f"**Adjusted score and grade:** `{adjusted_score}` / `{adjusted_rating}`")
+
+            st.caption("The demographic layer adjusts the FICO outcome only. The underlying XGB default likelihood shown above is unchanged.")
+
+            render_demographic_summary(demographic_df)
+
+            st.markdown("#### Visual 3: Demographic contribution to the adjusted score")
+            st.pyplot(plot_demographic_impact_chart(demographic_df), clear_figure=True, use_container_width=True)
+
+            demo_detail_df = demographic_df.copy()
+            demo_detail_df["Weight"] = demo_detail_df["Weight"].map(lambda value: f"{value:.0%}")
+            demo_detail_df["Feature score"] = demo_detail_df["Feature score"].map(lambda value: f"{value:.0%}")
+            demo_detail_df["Weighted contribution"] = demo_detail_df["Weighted contribution"].map(lambda value: f"{value:.1%}")
+            demo_detail_df["Impact ratio"] = demo_detail_df["Impact ratio"].map(lambda value: f"{value:+.2%}")
+            demo_detail_df["Estimated FICO point impact"] = demo_detail_df["Estimated FICO point impact"].map(lambda value: f"{value:+.1f}")
+
+            st.markdown("#### Demographic factor-by-factor explanation")
+            st.dataframe(
+                demo_detail_df.loc[:, [
+                    "Factor",
+                    "Weight",
+                    "Observed",
+                    "Feature score",
+                    "Weighted contribution",
+                    "Impact ratio",
+                    "Estimated FICO point impact",
+                    "Effect",
+                    "Why it matters",
+                ]],
+                use_container_width=True,
+                hide_index=True,
+            )
+
+            st.caption(
+                "The demographic composite uses the configured feature weights and a neutral midpoint of 50%. "
+                "Positive deviations lift the base XGB FICO, negative deviations reduce it, and the total effect is capped at +/-20%."
+            )
+        else:
+            st.info("Demographic composite was skipped for this run. The result shown above is the base XGB score only.")
+
         with st.expander("Submitted inputs and raw values", expanded=False):
-            st.json(input_data)
+            st.json({"model_inputs": input_data, "demographic_inputs": demographic_inputs})
 
     except Exception as e:
         st.error(f"Prediction error: {str(e)}")

@@ -20,7 +20,7 @@ class KingaMetricXGB:
         self.expected_n_features = 0
         self.best_threshold = 0.5
         self.target_col = "Default_Flag"
-        self.max_selected_features = 30
+        self.max_selected_features = 25
 
         self.categorical_features = [
             "Payment_of_Min_Amount",
@@ -365,7 +365,7 @@ class KingaMetricXGB:
         proba = self.predict_proba(X)
         return (proba >= self.best_threshold).astype(int)
 
-    def save(self, path="pickled_models/kingametric_base_1.pkl"):
+    def save(self, path="pickled_models/kingametric_base_2.pkl"):
         """Save the full fitted pipeline."""
         os.makedirs(os.path.dirname(path), exist_ok=True)
         joblib.dump(self, path)

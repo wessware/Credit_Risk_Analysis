@@ -634,7 +634,7 @@ with st.form("xgb_form"):
                 "Replace `COUNTY_POPULATION_PROXIES` with real data when available."
             )
 
-    submitted = st.form_submit_button("Predict with XGB Pipeline", use_container_width=True)
+    submitted = st.form_submit_button("Predict with XGB Pipeline", width='stretch')
 
 if submitted:
     input_data = {
@@ -705,15 +705,15 @@ if submitted:
         chart_col1, chart_col2 = st.columns(2)
         with chart_col1:
             st.markdown("#### Visual 1: Top feature pushes")
-            st.pyplot(plot_local_push_chart(local_df), clear_figure=True, use_container_width=True)
+            st.pyplot(plot_local_push_chart(local_df), clear_figure=True, width='stretch')
         with chart_col2:
             st.markdown("#### Visual 2: Credit health profile")
-            st.pyplot(plot_health_profile_chart(health_df), clear_figure=True, use_container_width=True)
+            st.pyplot(plot_health_profile_chart(health_df), clear_figure=True, width='stretch')
 
         table_col1, table_col2 = st.columns([1.6, 1])
         with table_col1:
             st.markdown("#### Base factor-by-factor explanation")
-            st.dataframe(build_driver_table(local_df), use_container_width=True, hide_index=True)
+            st.dataframe(build_driver_table(local_df), width='stretch', hide_index=True)
         with table_col2:
             st.markdown("#### Highest-power model signals")
             top_importance = importance_df.head(8).copy()
@@ -722,7 +722,7 @@ if submitted:
                 top_importance.loc[:, ["label", "importance"]].rename(
                     columns={"label": "Model signal", "importance": "Training importance"}
                 ),
-                use_container_width=True,
+                width='stretch',
                 hide_index=True,
             )
             st.caption("These are the strongest overall signals the trained XGB model tends to rely on.")
@@ -767,7 +767,7 @@ if submitted:
             render_demographic_summary(demographic_df)
 
             st.markdown("#### Visual 3: Demographic contribution to the adjusted score")
-            st.pyplot(plot_demographic_impact_chart(demographic_df), clear_figure=True, use_container_width=True)
+            st.pyplot(plot_demographic_impact_chart(demographic_df), clear_figure=True, width='stretch')
 
             demo_detail_df = demographic_df.copy()
             demo_detail_df["Weight"] = demo_detail_df["Weight"].map(lambda value: f"{value:.0%}")
@@ -789,7 +789,7 @@ if submitted:
                     "Effect",
                     "Why it matters",
                 ]],
-                use_container_width=True,
+                width='stretch',
                 hide_index=True,
             )
 

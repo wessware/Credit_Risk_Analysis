@@ -5,7 +5,7 @@ import numpy as np
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from pipelines.kingametric_base import KingaMetricXGB
+from pipelines.Archived.kingametric_base import KingaMetricXGB
 
 # TRAINING_MEDIANS: Fixed medians mimicking training data for robust NaN filling
 TRAINING_MEDIANS = {

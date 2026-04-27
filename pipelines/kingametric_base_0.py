@@ -213,10 +213,27 @@ class KingaMetricXGB:
 
     def feature_selection(self, X, y):
         """Select a bounded number of features while adapting to the available dataset width."""
-        mi_scores = mutual_info_classif(X, y, random_state=42)
-        mi_scores = pd.Series(mi_scores, index=X.columns).sort_values(ascending=False)
-        top_k = min(self.max_selected_features, len(mi_scores))
-        top_features = mi_scores.head(top_k).index.tolist()
+        #mi_scores = mutual_info_classif(X, y, random_state=42)
+        #mi_scores = pd.Series(mi_scores, index=X.columns).sort_values(ascending=False)
+        #top_k = min(self.max_selected_features, len(mi_scores))
+        #top_features = mi_scores.head(top_k).index.tolist()
+
+        temp_model = XGBClassifier(
+            n_estimators=300,
+            max_depth=5,
+            learning_rate=0.05,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            random_state=42,
+            tree_method="hist"
+        )
+        temp_model.fit(X, y)
+
+        importances = pd.Series(temp_model.feature_importances_, index=X.columns)
+        top_k = min(self.max_selected_features, len(importances))
+
+        top_features = importances.sort_values(ascending=False).head(top_k).index.tolist()
+
         self.feature_names = top_features
         self.expected_n_features = len(top_features)
         return X.loc[:, top_features].copy(), top_features
@@ -303,7 +320,7 @@ class KingaMetricXGB:
     def evaluate_auc_only(self, y_true, y_proba):
         auc_score = roc_auc_score(y_true, y_proba)
         print(f"Test ROC_AUC: {auc_score:.4f}")
-    def plot_probability_distribution(self, y_true, y_probs):
+    def plot_probability_distribution(self, y_true, y_probs, save_path="visualizations/probability_distribution_schema.png"):
 
         plt.figure(figsize=(8, 5))
 
@@ -315,6 +332,10 @@ class KingaMetricXGB:
         plt.title("Probability Distribution by Class")
         plt.legend()
         plt.grid(alpha=0.3)
+
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        plt.savefig(save_path)
+
         plt.show()
     def assign_risk_buckets(self, probs):
         bins = [0, 0.3, 0.6, 1.0]
@@ -331,7 +352,7 @@ class KingaMetricXGB:
             "risk_bucket": risk_labels
         })
 
-        summary = df_analysis.groupby("risk_bucket")["actual"].mean()
+        summary = df_analysis.groupby("risk_bucket")["actual"].mean().sort_index()
 
         print("\nDefault Rate by Risk Bucket:")
         print(summary)

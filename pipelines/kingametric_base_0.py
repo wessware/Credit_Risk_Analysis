@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import joblib
+import shap
 import category_encoders as ce
 import matplotlib.pyplot as plt
 from sklearn.metrics import roc_auc_score, ConfusionMatrixDisplay, roc_curve
@@ -211,13 +212,33 @@ class KingaMetricXGB:
             X_encoded = self.target_encoder.transform(X)
         return X_encoded
 
-    def feature_selection(self, X, y):
+    def feature_selection(self, X, y, save_path="visualizations/shap_top_features.png"):
         """Select a bounded number of features while adapting to the available dataset width."""
+        #Feature selection using mutual information is commented out in favor of using XGBoost's built-in feature importance, which is more aligned with the model's learning process and can capture complex interactions. Mutual information can be less effective in high-dimensional spaces and may not reflect the model's actual feature usage as accurately as tree-based importance scores.
         #mi_scores = mutual_info_classif(X, y, random_state=42)
         #mi_scores = pd.Series(mi_scores, index=X.columns).sort_values(ascending=False)
         #top_k = min(self.max_selected_features, len(mi_scores))
         #top_features = mi_scores.head(top_k).index.tolist()
 
+        #XGB feature importance-based selection
+        #importances = pd.Series(temp_model.feature_importances_, index=X.columns)
+        #importances = importances[importances > 0]
+        #top_k = min(self.max_selected_features, len(importances))
+
+        print("Running SHAP-based feature selection...")
+
+        # -----------------------------
+        # Step 1: Sample data (for speed)
+        # -----------------------------
+        sample_size = min(2000, len(X))
+        X_sample = X.sample(sample_size, random_state=42)
+        y_sample = y.loc[X_sample.index]
+
+        print(f"Using sample size: {len(X_sample)}")
+
+        # -----------------------------
+        # Step 2: Train temporary model
+        # -----------------------------
         temp_model = XGBClassifier(
             n_estimators=300,
             max_depth=5,
@@ -225,17 +246,72 @@ class KingaMetricXGB:
             subsample=0.8,
             colsample_bytree=0.8,
             random_state=42,
-            tree_method="hist"
+            tree_method="hist",
+            n_jobs=-1
         )
-        temp_model.fit(X, y)
 
-        importances = pd.Series(temp_model.feature_importances_, index=X.columns)
-        top_k = min(self.max_selected_features, len(importances))
+        temp_model.fit(X_sample, y_sample)
 
-        top_features = importances.sort_values(ascending=False).head(top_k).index.tolist()
+        # -----------------------------
+        # Step 3: Compute SHAP values
+        # -----------------------------
+        explainer = shap.TreeExplainer(temp_model)
+        shap_values = explainer.shap_values(X_sample)
+
+        # -----------------------------
+        # Step 4: Compute SHAP importance
+        # -----------------------------
+        shap_importance = np.abs(shap_values).mean(axis=0)
+        shap_series = pd.Series(shap_importance, index=X.columns)
+
+        # Remove zero-importance features (optional but recommended)
+        shap_series = shap_series[shap_series > 0]
+
+        # -----------------------------
+        # Step 5: Select top features
+        # -----------------------------
+        top_k = min(self.max_selected_features, len(shap_series))
+        top_features = shap_series.sort_values(ascending=False).head(top_k).index.tolist()
 
         self.feature_names = top_features
         self.expected_n_features = len(top_features)
+
+        print(f"Selected {len(top_features)} features via SHAP")
+
+        # -----------------------------
+        # Step 6: Debug output (Top features)
+        # -----------------------------
+        print("\nTop 10 SHAP Features:")
+        print(shap_series.sort_values(ascending=False).head(10))
+
+        # -----------------------------
+        # Step 7: SHAP Visualizations
+        # -----------------------------
+        try:
+            # Summary plot (distribution of impacts)
+            plt.figure()
+            shap.summary_plot(shap_values, X_sample, show=False)
+            plt.title("SHAP Summary Plot")
+            plt.tight_layout()
+            plt.show()
+
+            # Bar plot (global importance)
+            plt.figure()
+            shap.summary_plot(shap_values, X_sample, plot_type="bar", show=False)
+            plt.title("SHAP Feature Importance (Bar)")
+            plt.tight_layout()
+
+            os.makedirs(os.path.dirname(save_path), exist_ok=True)
+            plt.savefig(save_path)
+            
+            plt.show()
+
+        except Exception as e:
+            print(f"SHAP plotting skipped due to: {e}")
+
+        # -----------------------------
+        # Step 8: Return selected features
+        # -----------------------------
         return X.loc[:, top_features].copy(), top_features
 
     def train_model(self, X, y):

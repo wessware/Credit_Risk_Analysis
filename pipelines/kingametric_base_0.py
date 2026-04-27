@@ -20,7 +20,7 @@ class KingaMetricXGB:
         self.expected_n_features = 0
         self.best_threshold = 0.5
         self.target_col = "Default_Flag"
-        self.max_selected_features = 25
+        self.max_selected_features = 32
 
         self.categorical_features = [
             "Payment_of_Min_Amount",

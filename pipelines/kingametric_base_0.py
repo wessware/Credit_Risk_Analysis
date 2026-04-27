@@ -77,6 +77,7 @@ class KingaMetricXGB:
         self.fixed_params = {
             "n_estimators": 600,
             "max_depth": 4,
+            "min_child_weight": 1,
             "learning_rate": 0.011428470477839327,
             "subsample": 0.8940362813326697,
             "colsample_bytree": 0.7250627525433337,
@@ -298,6 +299,11 @@ class KingaMetricXGB:
         plt.savefig(save_path)
         plt.show()
 
+    #Test method to evaluate AUC without applying a threshold, since AUC is threshold-independent
+    def evaluate_auc_only(self, y_true, y_proba):
+        auc_score = roc_auc_score(y_true, y_proba)
+        print(f"Test ROC_AUC: {auc_score:.4f}")
+
     def train(self, filepath):
         """Train end to end using the same schema-locked pipeline used at inference."""
         print("Step 1: Loading and preprocessing...")
@@ -322,9 +328,13 @@ class KingaMetricXGB:
 
         print("Step 6: Predictions and evaluation...")
         test_proba = self.xgb_model.predict_proba(X_test_sel)[:, 1]
-        self.optimize_threshold(y_test, test_proba)
-        test_pred_opt = (test_proba >= self.best_threshold).astype(int)
-        self.evaluate(y_test, test_proba, test_pred_opt)
+
+        print("AUC evaluation only (no threshold applied)...")
+        self.evaluate_auc_only(y_test, test_proba)
+
+        #self.optimize_threshold(y_test, test_proba)
+        #test_pred_opt = (test_proba >= self.best_threshold).astype(int)
+        #self.evaluate(y_test, test_proba, test_pred_opt)
 
         print("Step 7: Plotting top features...")
         self.plot_top_features()

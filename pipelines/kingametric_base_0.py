@@ -304,6 +304,21 @@ class KingaMetricXGB:
         auc_score = roc_auc_score(y_true, y_proba)
         print(f"Test ROC_AUC: {auc_score:.4f}")
 
+
+    def plot_probability_distribution(self, y_true, y_probs):
+
+        plt.figure(figsize=(8, 5))
+
+        plt.hist(y_probs[y_true == 0], bins=50, alpha=0.5, label="No Default")
+        plt.hist(y_probs[y_true == 1], bins=50, alpha=0.5, label="Default")
+
+        plt.xlabel("Predicted Probability")
+        plt.ylabel("Count")
+        plt.title("Probability Distribution by Class")
+        plt.legend()
+        plt.grid(alpha=0.3)
+        plt.show()
+
     def train(self, filepath):
         """Train end to end using the same schema-locked pipeline used at inference."""
         print("Step 1: Loading and preprocessing...")
@@ -328,6 +343,8 @@ class KingaMetricXGB:
 
         print("Step 6: Predictions and evaluation...")
         test_proba = self.xgb_model.predict_proba(X_test_sel)[:, 1]
+
+        self.plot_probability_distribution(y_test, test_proba)
 
         print("AUC evaluation only (no threshold applied)...")
         self.evaluate_auc_only(y_test, test_proba)

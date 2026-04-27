@@ -303,8 +303,6 @@ class KingaMetricXGB:
     def evaluate_auc_only(self, y_true, y_proba):
         auc_score = roc_auc_score(y_true, y_proba)
         print(f"Test ROC_AUC: {auc_score:.4f}")
-
-
     def plot_probability_distribution(self, y_true, y_probs):
 
         plt.figure(figsize=(8, 5))
@@ -318,7 +316,27 @@ class KingaMetricXGB:
         plt.legend()
         plt.grid(alpha=0.3)
         plt.show()
+    def assign_risk_buckets(self, probs):
+        bins = [0, 0.3, 0.6, 1.0]
+        labels = ["Low Risk", "Medium Risk", "High Risk"]
 
+        return pd.cut(probs, bins=bins, labels=labels)
+    def analyze_risk_buckets(self, y_true, y_probs):
+        """Analyze default rates across probability-based risk buckets."""
+        risk_labels = self.assign_risk_buckets(y_probs)
+
+        df_analysis = pd.DataFrame({
+            "probability": y_probs,
+            "actual": y_true,
+            "risk_bucket": risk_labels
+        })
+
+        summary = df_analysis.groupby("risk_bucket")["actual"].mean()
+
+        print("\nDefault Rate by Risk Bucket:")
+        print(summary)
+
+        return df_analysis, summary
     def train(self, filepath):
         """Train end to end using the same schema-locked pipeline used at inference."""
         print("Step 1: Loading and preprocessing...")
@@ -344,7 +362,11 @@ class KingaMetricXGB:
         print("Step 6: Predictions and evaluation...")
         test_proba = self.xgb_model.predict_proba(X_test_sel)[:, 1]
 
+        self.evaluate_auc_only(y_test, test_proba)
+
         self.plot_probability_distribution(y_test, test_proba)
+
+        self.analyze_risk_buckets(y_test, test_proba)
 
         print("AUC evaluation only (no threshold applied)...")
         self.evaluate_auc_only(y_test, test_proba)

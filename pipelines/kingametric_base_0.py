@@ -21,7 +21,7 @@ class KingaMetricXGB:
         self.expected_n_features = 0
         self.best_threshold = 0.5
         self.target_col = "Default_Flag"
-        self.max_selected_features = 36
+        self.max_selected_features = 20
 
         self.categorical_features = [
             "Payment_of_Min_Amount",
@@ -76,7 +76,7 @@ class KingaMetricXGB:
             "Borrower_Tier": "Missing",
         }
         self.fixed_params = {
-            "n_estimators": 600,
+            "n_estimators": 400,
             "max_depth": 4,
             "min_child_weight": 1,
             "learning_rate": 0.011428470477839327,

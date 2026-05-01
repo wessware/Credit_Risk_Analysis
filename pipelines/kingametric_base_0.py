@@ -21,7 +21,7 @@ class KingaMetricXGB:
         self.expected_n_features = 0
         self.best_threshold = 0.5
         self.target_col = "Default_Flag"
-        self.max_selected_features = 38
+        self.max_selected_features = 30
 
         self.categorical_features = [
             "Payment_of_Min_Amount",
@@ -167,7 +167,7 @@ class KingaMetricXGB:
             "normalized_emi",
             "normalized_utilization",
             "normalized_dti",
-            "Credit_Utilization_Ratio",
+            #"Credit_Utilization_Ratio",
             "normalized_delinquency",
         ]:
             X[f"{feature}_sq"] = X[feature] ** 2

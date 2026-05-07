@@ -1,8 +1,8 @@
-# KingaMetric Credit Score Project
+# KingaMetric Risk Analysis Project
 
 This project is a credit-risk and credit-scoring workflow built around tabular borrower data, engineered behavioral features, SQL-based scorecards, Python/XGBoost pipelines, ensemble experiments, serialized models, and Streamlit scoring apps. The repository combines exploratory analysis, preprocessing, rule-based scoring, machine-learning training, and end-user scoring interfaces in one place.
 
-The project centers on predicting `Default_Flag` and converting risk into a borrower-facing score. In the Streamlit ML app, probability of default is mapped to a FICO-style score with `850 - (risk_prob * 550)`. In the SQL scorecard flow, a normalized composite risk score is mapped to `300 + (Composite_Credit_Risk_Score * 550)`.
+The project centers on predicting `Default_Flag` and converting risk into a borrower-facing score. In the Streamlit ML app, the probability of default is mapped to a FICO-style score with `850 - (risk_prob * 550)`. In the SQL scorecard flow, a normalized composite risk score is mapped to `300 + (Composite_Credit_Risk_Score * 550)`.
 
 ## Project Description
 
